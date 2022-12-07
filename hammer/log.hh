@@ -21,28 +21,28 @@
 #include "singleton.hh"
 #include "util.hh"
 
-#define SYLAR_LOG_LEVEL(logger, level) \
+#define HAMMER_LOG_LEVEL(logger, level) \
     if (logger->getLevel() <= level) \
         hammer::LogEventWrap(logger, \
                 hammer::LogEvent::ptr(new hammer::LogEvent(time(0), level, __FILE__, __LINE__, hammer::GetThreadId()))).getSS()
 
-#define SYLAR_LOG_DEBUG(logger) SYLAR_LOG_LEVEL(logger, hammer::LogLevel::DEBUG)
-#define SYLAR_LOG_INFO(logger) SYLAR_LOG_LEVEL(logger, hammer::LogLevel::INFO)
-#define SYLAR_LOG_WARN(logger) SYLAR_LOG_LEVEL(logger, hammer::LogLevel::WARN)
-#define SYLAR_LOG_ERROR(logger) SYLAR_LOG_LEVEL(logger, hammer::LogLevel::ERROR)
+#define HAMMER_LOG_DEBUG(logger) HAMMER_LOG_LEVEL(logger, hammer::LogLevel::DEBUG)
+#define HAMMER_LOG_INFO(logger) HAMMER_LOG_LEVEL(logger, hammer::LogLevel::INFO)
+#define HAMMER_LOG_WARN(logger) HAMMER_LOG_LEVEL(logger, hammer::LogLevel::WARN)
+#define HAMMER_LOG_ERROR(logger) HAMMER_LOG_LEVEL(logger, hammer::LogLevel::ERROR)
 
-#define SYLAR_LOG_FMT_LEVEL(logger, level, fmt, ...) \
+#define HAMMER_LOG_FMT_LEVEL(logger, level, fmt, ...) \
     if (logger->getLevel() <= level) \
         hammer::LogEventWrap(logger, \
         hammer::LogEvent::ptr(new hammer::LogEvent(time(0), level, __FILE__, __LINE__, hammer::GetThreadId())).getLogEvent()->format(fmt, __VA_ARGS__)
 
-#define SYLAR_LOG_FMT_DEBUG(logger, fmt, ...) SYLAR_LOG_FMT_LEVEL(logger, hammer::LogLevel:DEBUG, fmt, ...)
-#define SYLAR_LOG_FMT_INFO(logger, fmt, ...) SYLAR_LOG_FMT_LEVEL(logger, hammer::LogLevel:INFO, fmt, ...)
-#define SYLAR_LOG_FMT_WARN(logger, fmt, ...) SYLAR_LOG_FMT_LEVEL(logger, hammer::LogLevel:WARN, fmt, ...)
-#define SYLAR_LOG_FMT_ERROR(logger, fmt, ...) SYLAR_LOG_FMT_LEVEL(logger, hammer::LogLevel:ERROR, fmt, ...)
+#define HAMMER_LOG_FMT_DEBUG(logger, fmt, ...) HAMMER_LOG_FMT_LEVEL(logger, hammer::LogLevel:DEBUG, fmt, ...)
+#define HAMMER_LOG_FMT_INFO(logger, fmt, ...) HAMMER_LOG_FMT_LEVEL(logger, hammer::LogLevel:INFO, fmt, ...)
+#define HAMMER_LOG_FMT_WARN(logger, fmt, ...) HAMMER_LOG_FMT_LEVEL(logger, hammer::LogLevel:WARN, fmt, ...)
+#define HAMMER_LOG_FMT_ERROR(logger, fmt, ...) HAMMER_LOG_FMT_LEVEL(logger, hammer::LogLevel:ERROR, fmt, ...)
 
-#define SYLAR_LOG_ROOT() hammer::Singleton<hammer::LoggerManager>::instance().getRoot()
-#define SYLAR_LOG_NAME(name) hammer::Singleton<hammer::LoggerManager>::instance().getLogger(name)
+#define HAMMER_LOG_ROOT() hammer::Singleton<hammer::LoggerManager>::instance().getRoot()
+#define HAMMER_LOG_NAME(name) hammer::Singleton<hammer::LoggerManager>::instance().getLogger(name)
 
 namespace hammer {
     class Logger;
