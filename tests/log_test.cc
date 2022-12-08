@@ -5,6 +5,7 @@
 #include "hammer/log.hh"
 #include "hammer/util.hh"
 #include "hammer/event_poller.hh"
+#include "hammer/mbuffer.hh"
 
 static hammer::Logger::ptr g_root_logger = HAMMER_LOG_NAME("root");
 static hammer::Logger::ptr g_system_logger = HAMMER_LOG_NAME("system");
@@ -62,6 +63,13 @@ void task_test()
     //task.cancel();
     task('x', 0);
     HAMMER_LOG_DEBUG(g_root_logger) << "task done";
+}
+
+int buffer_test()
+{
+    hammer::MBuffer::ptr buffer = std::make_shared<hammer::MBuffer>("1234567890");
+    HAMMER_LOG_DEBUG(g_root_logger) << buffer->toString();
+    return 0;
 }
 
 int main()

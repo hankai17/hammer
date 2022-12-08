@@ -13,6 +13,7 @@
 #include <vector>
 #include <thread>
 #include <list>
+#include <byteswap.h>
 
 #define HAMMER_ASSERT(x) \
     if (!(x)) { \
@@ -21,6 +22,8 @@
         << hammer::BacktraceToString(100, 2, "    "); \
         assert(x); \
     }
+#define HAMMER_LITTLE_ENDIAN 1
+#define HAMMER_BIG_ENDIAN 2
 
 namespace hammer {
 
@@ -31,13 +34,13 @@ namespace hammer {
 
     class semaphore {
     public:
-        explicit semaphore(size_t initial = 0) {
-            sem_init(&m_sem, 0, initial);
+        explicit semaphore(size_t count = 0) {
+            sem_init(&m_sem, 0, count);
         }
         ~semaphore() {
             sem_destroy(&m_sem);
         }
-        void post(size_t n = -1) {
+        void notify(size_t n = 1) {
             while (n--) {
                 sem_post(&m_sem);
             }
@@ -46,6 +49,9 @@ namespace hammer {
             sem_wait(&m_sem);
         }
     private:
+        semaphore(const semaphore&) = delete;
+        semaphore &operator=(const semaphore&) = delete;
+        semaphore(semaphore&&) = delete;
         sem_t   m_sem;
     };
 
@@ -100,6 +106,47 @@ namespace hammer {
         OnceToken &operator=(OnceToken &&) = delete;
         task m_on_destroied = nullptr;
     };
+
+    template<typename T>
+    void nop(T*) {}
+
+    template <typename T>
+    typename std::enable_if<sizeof(T) == sizeof(uint64_t), T>::type
+    byteswap(T value) {
+        return (T)bswap_64((uint64_t)value);
+    }
+
+    template <typename T>
+    typename std::enable_if<sizeof(T) == sizeof(uint32_t), T>::type
+    byteswap(T value) {
+        return (T)bswap_32((uint32_t)value);
+    }
+
+    template <typename T>
+    typename std::enable_if<sizeof(T) == sizeof(uint16_t), T>::type
+    byteswap(T value) {
+        return (T)bswap_16((uint16_t)value);
+    }
+
+#if BYTE_ORDER == BIG_ENDIAN
+#define HAMMER_BYTE_ORDER HAMMER_BIG_ENDIAN
+#else
+#define HAMMER_BYTE_ORDER HAMMER_LITTLE_ENDIAN
+#endif
+
+#if HAMMER_BYTE_ORDER == HAMMER_BIG_ENDIAN
+    //TODO
+#else
+    template <typename T>
+    T byteswapOnLittleEndian(T t) {
+        return byteswap(t);
+    }
+
+    template <typename T>
+    T byteswapOnBigEndian(T t) {
+        return t;
+    }
+#endif
 
 	void no_locks_localtime(struct tm *tmp, time_t t);
 	void local_time_init();

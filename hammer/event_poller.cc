@@ -5,6 +5,8 @@
 #include "event_poller.hh"
 #include "log.hh"
 
+#include <string.h>
+
 #define EPOLL_SIZE 5000
 
 #define toEpollEvent(event)      (((event) & READ) ? EPOLLIN : 0) \
@@ -25,14 +27,10 @@ namespace hammer {
         HAMMER_ASSERT(m_wakeup_fd >= 0);
         m_epoll_fd = epoll_create(EPOLL_SIZE); 
         HAMMER_ASSERT(m_epoll_fd > 0);
-
-		epoll_event event = {0};
-        event.events = EPOLLIN | EPOLLET;
-        event.data.fd = m_wakeup_fd;
-        int ret = epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, m_wakeup_fd, &event);
-        HAMMER_ASSERT(!ret)
-
 		m_thread_id = std::this_thread::get_id();
+        if (addEvent(m_wakeup_fd, READ, [this](int event){ onPipeEvent(); }) != 0) {
+            HAMMER_LOG_WARN(g_logger) << "EventPoller add wakeup_fd failed: " << strerror(errno);
+        }
     }
 
     EventPoller::~EventPoller() {
@@ -52,9 +50,8 @@ namespace hammer {
                 m_task_list.emplace_back(ret);
             }
         }
-        char c = 'H';
-        int r = write(m_wakeup_fd, &c, sizeof(char));
-        HAMMER_ASSERT(r == 1);
+        uint64_t counter = 1;
+        write(m_wakeup_fd, &counter, sizeof(uint64_t));
         return ret;
     }
 
@@ -67,10 +64,8 @@ namespace hammer {
     }
 
     void EventPoller::onPipeEvent() {
-        char c[1] = {0};
-        while (read(m_wakeup_fd, c, sizeof(char)) == 1) {
-            continue;
-        }
+        uint64_t counter;
+        read(m_wakeup_fd, &counter, sizeof(uint64_t));
         decltype(m_task_list) task_list;
         {
             std::lock_guard<std::mutex> lock(m_task_mutex);
@@ -88,7 +83,7 @@ namespace hammer {
     }
 
     int EventPoller::addEvent(int fd, int event, PollEventCB cb) {
-		HAMMER_ASSERT(!cb);
+        HAMMER_ASSERT(cb);
         if (isCurrentThread()) {
 		    epoll_event ev = {0};
             ev.events = toEpollEvent(event);
@@ -163,7 +158,24 @@ namespace hammer {
         return updateTimer(now); 
     }
 
-    void EventPoller::runLoop() {
+    EventPoller::TimerTask::ptr EventPoller::doTimerTask(uint64_t ms, std::function<uint64_t(void)> task) {
+        EventPoller::TimerTask::ptr ret = std::make_shared<TimerTask>(std::move(task));
+        uint64_t timer_deadline = getCurrentMillSecond() + ms; 
+        async_first([timer_deadline, ret, this]() {
+            m_timer_map.emplace(timer_deadline, ret);
+        });
+        return ret;
+    }
+
+    void EventPoller::runLoop(bool blocked) {
+        if (!blocked) {
+            m_loop_thread = new std::thread(&EventPoller::runLoop, this, true);
+            m_sem_loop_thread_started.wait();
+            return;
+        }
+		m_thread_id = std::this_thread::get_id();
+        m_sem_loop_thread_started.notify();
+
         m_exit_flag = false;
         uint64_t next_time = 0;
         struct epoll_event events[EPOLL_SIZE];
@@ -189,8 +201,33 @@ namespace hammer {
                 }
             }
         }
-
+    }
+    
+    void EventPoller::shutdown() {
+        async_l([]() {
+            throw ExitException();
+        }, false);
     }
 
+    
+    size_t TaskExecutor::addPoller(const std::string &name, size_t size) {
+        auto cpus = std::thread::hardware_concurrency();
+        size = size > 0 ? size : cpus;
+        for (size_t i = 0; i < size; i++) {
+            auto full_name = name + "-" + std::to_string(i);
+            EventPoller::ptr poller(new EventPoller(full_name));
+            poller->runLoop(false);
+            poller->async([full_name]() {
+                pthread_setname_np(pthread_self(), full_name.substr(0, 15).c_str());
+            });
+            m_threads.emplace_back(std::move(poller));
+        }
+        return size;
+    }
+
+    size_t EventPollerPool::s_pool_size = 0;
+    void EventPollerPool::setPoolSize(size_t size) {
+        s_pool_size = size;
+    }
 
 }

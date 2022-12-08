@@ -33,6 +33,9 @@ set(LIB_SRC
         hammer/util.cc
         hammer/log.cc
         hammer/event_poller.cc
+        hammer/mbuffer.cc
+        hammer/uv_errno.cc
+        hammer/socket_ops.cc
         )
 
 add_library(${PROJECT_NAME} SHARED ${LIB_SRC})
@@ -44,4 +47,5 @@ function(hammer_add_executable targetname srcs depends libs)
     target_link_libraries(${targetname} ${libs})
 endfunction()
 
-hammer_add_executable(logger_test tests/log_test.cpp ${PROJECT_NAME} "${LIBS}")
+hammer_add_executable(logger_test tests/log_test.cc ${PROJECT_NAME} "${LIBS}")
+hammer_add_executable(event_poller tests/event_poller.cc ${PROJECT_NAME} "${LIBS}")

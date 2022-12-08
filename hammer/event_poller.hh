@@ -18,6 +18,7 @@
 #include <mutex>
 
 #include "hammer/util.hh"
+#include "hammer/singleton.hh"
 
 namespace hammer {
 
@@ -68,6 +69,7 @@ namespace hammer {
     using TaskIn = std::function<void()>;
     using Task = TaskImp<void()>;
 
+    /*
     class TaskExecInterface {
     public:
         typedef std::shared_ptr<TaskExecInterface> ptr;
@@ -103,11 +105,12 @@ namespace hammer {
             }
         }
     };
+    */
 
     class EventPoller {
     public:
-        typedef std::shared_ptr<EventPoller> ptr;
-        typedef std::function<void(int event)> PollEventCB;
+        using ptr = std::shared_ptr<EventPoller>;
+        using PollEventCB = std::function<void(int event)>;
         using TimerTask = TaskImp<uint64_t(void)>;
 
         enum Event : uint64_t {
@@ -135,8 +138,10 @@ namespace hammer {
     
         uint64_t updateTimer(uint64_t now);
         uint64_t getNextTimer();
+        TimerTask::ptr doTimerTask(uint64_t ms, std::function<uint64_t(void)> task);
             
-        void runLoop();
+        void runLoop(bool blocked);
+        void shutdown();
 
     private:
         class ExitException : public std::exception {};
@@ -148,9 +153,33 @@ namespace hammer {
         bool                m_exit_flag = false;
         std::mutex          m_task_mutex;
         List<Task::ptr>     m_task_list;
+        std::thread        *m_loop_thread = nullptr;
+        semaphore           m_sem_loop_thread_started;
         std::multimap<uint64_t, TimerTask::ptr> m_timer_map;
         std::unordered_map<int, std::shared_ptr<PollEventCB>> m_event_map;
+    };
 
+    class TaskExecutor {
+    public:
+        using ptr = std::shared_ptr<TaskExecutor>;
+        TaskExecutor() = default;
+        ~TaskExecutor() = default;
+
+        size_t getExecutorSize() const { return m_threads.size(); }
+        
+    protected:
+        size_t addPoller(const std::string &name, size_t size);
+        std::vector<EventPoller::ptr>   m_threads;
+    private:
+    };
+
+    class EventPollerPool {
+    public:
+        using ptr = std::shared_ptr<EventPollerPool>;
+        ~EventPollerPool() = default;
+        static void setPoolSize(size_t size = 0);
+    private:
+        static size_t       s_pool_size;
     };
 
 }
