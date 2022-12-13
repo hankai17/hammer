@@ -34,6 +34,16 @@ namespace hammer {
     }
 
     EventPoller::~EventPoller() {
+        // TODO
+    }
+
+    MBuffer::ptr EventPoller::getSharedBuffer() {
+        auto ret = m_shared_buffer.lock();
+        if (!ret) {
+            ret = std::make_shared<MBuffer>();
+            m_shared_buffer = ret;
+        }
+        return ret;
     }
 
     Task::ptr EventPoller::async_l(TaskIn task, bool first) {

@@ -70,6 +70,8 @@ namespace hammer {
         MBuffer(const std::string& string);
         MBuffer(const void* string, size_t length);
         MBuffer& operator= (const MBuffer& copy);
+        MBuffer(MBuffer &&that);
+        MBuffer &operator=(MBuffer &&that);
         virtual ~MBuffer() {}
 
         size_t readAvailable() const;
@@ -83,6 +85,7 @@ namespace hammer {
         void consume(size_t length);
         void truncate(size_t length);
         void truncate_r(size_t pos);
+        size_t empty() const { return !readAvailable(); }
 
         const std::vector<iovec> readBuffers(size_t length = ~0) const;
         const iovec readBuffer(size_t length, bool reallocate) const;

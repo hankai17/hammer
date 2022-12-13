@@ -19,6 +19,7 @@
 
 #include "hammer/util.hh"
 #include "hammer/singleton.hh"
+#include "hammer/mbuffer.hh"
 
 namespace hammer {
 
@@ -126,6 +127,7 @@ namespace hammer {
         const std::string &getName() const { return m_name; }
         std::thread::id getThreadId() const { return m_thread_id; }
         bool isCurrentThread() { return m_thread_id == std::this_thread::get_id(); }
+        MBuffer::ptr getSharedBuffer();
         
         Task::ptr async_l(TaskIn task, bool first = false);
         Task::ptr async(TaskIn task);
@@ -155,8 +157,39 @@ namespace hammer {
         List<Task::ptr>     m_task_list;
         std::thread        *m_loop_thread = nullptr;
         semaphore           m_sem_loop_thread_started;
+        std::weak_ptr<MBuffer>                  m_shared_buffer;
         std::multimap<uint64_t, TimerTask::ptr> m_timer_map;
         std::unordered_map<int, std::shared_ptr<PollEventCB>> m_event_map;
+    };
+
+    class Timer {
+    public:
+        using ptr = std::shared_ptr<Timer>;
+        Timer(uint64_t ms, const std::function<bool()> &cb, const EventPoller::ptr &poller) :
+            m_poller(poller) {
+            if (!m_poller) {
+                // TODO when use multi-thread
+            }
+            m_timer = m_poller->doTimerTask(ms, [ms, cb]() -> uint64_t {
+                try {
+                    if (cb()) {
+                        return ms;
+                    }
+                    return 0;
+                } catch (std::exception &e) {
+                    return ms;
+                }
+            });
+        }
+        ~Timer() {
+            auto timer = m_timer.lock();
+            if (timer) {
+                timer->cancel();
+            }
+        }
+    private:
+        EventPoller::ptr                        m_poller;
+        std::weak_ptr<EventPoller::TimerTask>   m_timer;
     };
 
     class TaskExecutor {

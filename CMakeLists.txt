@@ -36,6 +36,7 @@ set(LIB_SRC
         hammer/mbuffer.cc
         hammer/uv_errno.cc
         hammer/socket_ops.cc
+        hammer/socket.cc
         )
 
 add_library(${PROJECT_NAME} SHARED ${LIB_SRC})

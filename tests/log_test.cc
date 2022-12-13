@@ -69,6 +69,10 @@ int buffer_test()
 {
     hammer::MBuffer::ptr buffer = std::make_shared<hammer::MBuffer>("1234567890");
     HAMMER_LOG_DEBUG(g_root_logger) << buffer->toString();
+
+    hammer::MBuffer buffer0("123456");
+    hammer::MBuffer buffer1 = std::move(buffer0);
+    HAMMER_LOG_DEBUG(g_root_logger) << buffer0.toString() << ", " << buffer1.toString();
     return 0;
 }
 

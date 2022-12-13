@@ -189,6 +189,19 @@ namespace hammer {
         return *this;
     }
 
+    MBuffer::MBuffer(MBuffer &&that) {
+        clear();
+        copyIn(that);
+        that.clear();
+    }
+
+    MBuffer &MBuffer::operator=(MBuffer &&that) {
+        clear();
+        copyIn(that);
+        that.clear();
+        return *this;
+    }
+
     size_t MBuffer::readAvailable() const {
         return m_readAvailable;
     }
