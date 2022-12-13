@@ -191,22 +191,6 @@ namespace hammer {
         init();
     }
 
-    std::string LogFormatter::toYamlString() {
-        YAML::Node node;
-        node["formatter"] = getFormatter();
-        std::stringstream ss;
-        ss << node;
-        return ss.str();
-    }
-
-    std::string StdoutLogAppender::toYamlString() {
-        YAML::Node node;
-        node["type"] = "StdoutLogAppender";
-        std::stringstream ss;
-        ss << node;
-        return ss.str();
-    }
-
     void StdoutLogAppender::log(Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event) {
         if (level >= m_level) {
             std::cout << m_formatter->format(logger, level, event);
@@ -238,15 +222,6 @@ namespace hammer {
         }
         m_filestream.open(m_filename, std::ios::app);
         return !!m_filestream;
-    }
-
-    std::string FileLogAppender::toYamlString() {
-        YAML::Node node;
-        node["type"] = "FileLogAppender";
-        node["file"] = getFilename();
-        std::stringstream ss;
-        ss << node;
-        return ss.str();
     }
 
     void Logger::addAppender(LogAppender::ptr appender) {
@@ -291,21 +266,6 @@ namespace hammer {
                 i->log(shared_from_this(), level, event);
             }
         }
-    }
-
-    std::string Logger::toYamlString() const {
-        YAML::Node node;
-        node["name"] = m_name;
-        node["level"] = LogLevel::ToString(m_level);
-        node["formatter"] = m_formatter->getFormatter();
-        for (const auto &i : m_appenders) {
-            node["appender"].push_back(
-                    YAML::Load(i->toYamlString())); // not node.push_back(YAML::Load(i->toYamlString))
-        }
-        std::stringstream ss;
-        ss << node;
-        return ss.str();
-
     }
 
     void LogFormatter::init() {
@@ -445,35 +405,4 @@ namespace hammer {
         return logger;
     }
 
-    //logMgr is logger's factory. This factory has a default root log. When load log config we should use this factory
-    //we should has a global logconfig that used to load log config //Only after load log config we can get more loggers
-    //1g_log 2loadfromyam
-    //we should not replace logger in map. It is so violence!
-
-    void LoggerConfig::setDefaultRoot() {
-        //Logger::ptr logger = LoggerManager::getLogMgr()->getRoot(); // SOS // global value rely on siglo however siglo init after global
-        //m_log_name = logger->getName();
-        /*
-        Logger::ptr logger = LoggerManager::getLogMgr()->getRoot(); // SOS
-        m_log_name = logger->getName();
-        m_level    = logger->getLevel();
-        m_formatter = logger->getFormatter()->getFormatter();
-        //m_appenders = logger->
-        for (const auto& i : logger->getAppender()) {
-            if (i->getFile() == "")  {
-                LogAppender::ptr ap(new StdoutLogAppender);
-                m_appenders.push_back(ap);
-            } else {
-                LogAppender::ptr ap(new FileLogAppender(i->getFile()));
-                ap->setFile(i->getFile());
-                m_appenders.push_back(ap);
-            }
-        }
-         */
-        m_log_name = "root";
-        m_level = LogLevel::Level::DEBUG;
-        m_formatter = "%d{%Y-%m-%d %H:%M:%S}%T%t%T%F%T[%p]%T[%c]%T%f:%l%T%m%n";
-        LogAppender::ptr ap(new StdoutLogAppender);
-        m_appenders.push_back(ap);
-    }
 }

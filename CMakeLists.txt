@@ -20,10 +20,7 @@ endif()
 
 set(LIBS ${PROJECT_NAME}
         pthread
-        yaml-cpp
         dl
-        #gtest
-        #jemalloc
         ${OPENSSL_LIBRARIES}
         )
 

@@ -15,7 +15,6 @@
 #include <vector>
 #include <stdarg.h>
 #include <map>
-#include <yaml-cpp/yaml.h>
 #include <iostream>
 
 #include "singleton.hh"
@@ -94,7 +93,6 @@ namespace hammer {
         std::string getFormatter() const { return m_pattern; }
 
         void setFormatter(const std::string &pattern) { m_pattern = pattern; }
-        std::string toYamlString();
     public:
         class FormatItem {
         public:
@@ -119,7 +117,6 @@ namespace hammer {
         LogFormatter::ptr getFormatter() const { return m_formatter; }
         LogLevel::Level getLevel() const { return m_level; }
         virtual void log(std::shared_ptr<Logger> logger, LogLevel::Level level, LogEvent::ptr event) = 0;
-        virtual std::string toYamlString() = 0;
         virtual std::string getType() = 0;
         virtual std::string getFile() = 0;
         virtual void setType(const std::string& type) = 0;
@@ -151,9 +148,6 @@ namespace hammer {
 
         std::list<LogAppender::ptr> getAppender() const { return m_appenders; }
         Logger(const std::string& name = "root");
-
-        std::string toYamlString() const;
-
         void clearAppender() { m_appenders.clear(); } //not const
 
     private:
@@ -168,7 +162,6 @@ namespace hammer {
     public:
         typedef std::shared_ptr<StdoutLogAppender> ptr;
         void log(Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event) override;
-        std::string toYamlString() override;
         std::string getType() override { return "StdoutLogAppender"; }
         std::string getFile() override { return ""; }
         void setType(const std::string& val) override { m_type = "StdoutLogAppender"; }
@@ -181,7 +174,6 @@ namespace hammer {
 
         FileLogAppender(const std::string& filename);
         void log(Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event) override;
-        std::string toYamlString() override;
         bool reopen();
         std::string getFilename() const { return m_filename; }
         std::string getType() override { return "FileLogAppender"; };
@@ -229,54 +221,7 @@ namespace hammer {
         std::map<std::string, Logger::ptr> m_loggers;
     };
 
-    class LoggerConfig {
-    public:
-        typedef std::shared_ptr<LoggerConfig> ptr;
-
-        std::string toYamlString() const {
-            YAML::Node node;
-            node["name"] = m_log_name;
-            node["level"] = LogLevel::ToString(m_level);
-            node["formatter"] = m_formatter;
-            for (const auto& i : m_appenders) {
-                node["appender"].push_back(YAML::Load(i->toYamlString())); // not node.push_back(YAML::Load(i->toYamlString))
-            }
-            std::stringstream ss;
-            ss << node;
-            return ss.str();
-        }
-
-        void setDefaultRoot();
-
-        LoggerConfig(const std::string &root = "") { if (root == "root") setDefaultRoot(); }
-        std::string getLogName() const { return m_log_name; }
-        void setLogName(const std::string& log_name) { m_log_name = log_name; }
-        LogLevel::Level getLogLevel() const { return m_level; }
-        void setLogLevel(const LogLevel::Level& level) { m_level = level; }
-        std::string getFormatter() const { return m_formatter; }
-        void setLogFormatter(const std::string& formatter) { m_formatter = formatter; }
-        const std::vector<LogAppender::ptr>& getAppenders() const { return m_appenders; } // otherwise cant not insert! // this func can not insert
-        void pushAppender(LogAppender::ptr p) { m_appenders.push_back(p); }
-
-    private:
-        std::string         m_log_name;
-        LogLevel::Level     m_level;
-        std::string         m_formatter;
-        std::vector<LogAppender::ptr>   m_appenders;
-    };
 }
 
 #endif
 
-/*
-logger
-  |
-  +--- formatter: parse log4j conf then collect every items
-  |
-  +--- appender:  How to use?
-
-How to use?
-1. alloc event
-2. alloc appender to init logger
-logger->log(level, event)
-*/
