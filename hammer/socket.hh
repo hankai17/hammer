@@ -89,7 +89,7 @@ namespace hammer {
     public:
         using ptr = std::shared_ptr<Socket>;
         using ConnCB = std::function<void(int)>;
-        using onErrCB = std::function<void(const std::string &)>;
+        using onErrCB = std::function<void(const SocketException &)>;
         using onReadCB = std::function<void(const MBuffer::ptr &, struct sockaddr *, int addr_len)>;
         using onAcceptCB = std::function<void(Socket::ptr &, std::shared_ptr<void> &)>;
         using onFlushCB = std::function<bool()>;
@@ -110,14 +110,24 @@ namespace hammer {
 
         bool attachEvent(const SocketFD::ptr &sock);
 
+        bool listen(const SocketFD::ptr &sock);
         int onAccept(const SocketFD::ptr &sock, int event);
 
+        void onConnected(const SocketFD::ptr &sock, const onErrCB &cb);
+        void connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
+                const std::string &local_ip, uint16_t local_port);
+
+
+        //////
+        EventPoller::ptr getPoller() const { return m_poller; }
+        MutexWrapper<std::recursive_mutex> &getFdMutex() const { return m_socketFD_mutex; }
+        void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
 
     private:
         EventPoller::ptr    m_poller = nullptr;
         SocketFD::ptr       m_fd;
         Timer::ptr          m_conn_timer = nullptr;
-        ConnCB              m_conn_cb = nullptr;
+        std::shared_ptr<ConnCB> m_conn_cb = nullptr;
         MBuffer::ptr        m_read_buffer = nullptr;
         mutable MutexWrapper<std::recursive_mutex>  m_socketFD_mutex;
 

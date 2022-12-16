@@ -220,7 +220,7 @@ namespace hammer {
     }
 
     
-    size_t TaskExecutor::addPoller(const std::string &name, size_t size) {
+    size_t TaskExecutorManager::addPoller(const std::string &name, size_t size) {
         auto cpus = std::thread::hardware_concurrency();
         size = size > 0 ? size : cpus;
         for (size_t i = 0; i < size; i++) {
@@ -233,11 +233,6 @@ namespace hammer {
             m_threads.emplace_back(std::move(poller));
         }
         return size;
-    }
-
-    size_t EventPollerPool::s_pool_size = 0;
-    void EventPollerPool::setPoolSize(size_t size) {
-        s_pool_size = size;
     }
 
 }

@@ -70,23 +70,20 @@ namespace hammer {
     using TaskIn = std::function<void()>;
     using Task = TaskImp<void()>;
 
-    /*
-    class TaskExecInterface {
+    class TaskExecutor {
     public:
-        typedef std::shared_ptr<TaskExecInterface> ptr;
-        TaskExecInterface() = default;
-        virtual ~TaskExecInterface() = default;
+        using ptr = std::shared_ptr<TaskExecutor>;
+        TaskExecutor() = default;
+        virtual ~TaskExecutor() = default;
 
         virtual Task::ptr async(TaskIn task) = 0;
-        Task::ptr async_first(TaskIn task) {
-            return async(std::move(task));
-        }
+        virtual Task::ptr async_first(TaskIn task) { return async(std::move(task)); }
         void sync(const TaskIn &task) {
             semaphore sem;
             auto ret = async([&]() {
                 hammer::OnceToken(nullptr, [&](){
-                    sem.post();
-                }); 
+                    sem.notify();
+                });
                 task();
             });
             if (ret && *ret) {
@@ -97,8 +94,8 @@ namespace hammer {
             semaphore sem;
             auto ret = async_first([&]() {
                 hammer::OnceToken(nullptr, [&](){
-                    sem.post();
-                }); 
+                    sem.notify();
+                });
                 task();
             });
             if (ret && *ret) {
@@ -106,9 +103,9 @@ namespace hammer {
             }
         }
     };
-    */
 
-    class EventPoller {
+    class EventPoller : public TaskExecutor,
+            public std::enable_shared_from_this<EventPoller> {
     public:
         using ptr = std::shared_ptr<EventPoller>;
         using PollEventCB = std::function<void(int event)>;
@@ -130,8 +127,8 @@ namespace hammer {
         MBuffer::ptr getSharedBuffer();
         
         Task::ptr async_l(TaskIn task, bool first = false);
-        Task::ptr async(TaskIn task);
-        Task::ptr async_first(TaskIn task);
+        Task::ptr async(TaskIn task) override;
+        Task::ptr async_first(TaskIn task) override;
         void onPipeEvent();
         
         int addEvent(int fd, int event, PollEventCB cb);
@@ -192,27 +189,51 @@ namespace hammer {
         std::weak_ptr<EventPoller::TimerTask>   m_timer;
     };
 
-    class TaskExecutor {
+    class TaskExecutorManager {
     public:
-        using ptr = std::shared_ptr<TaskExecutor>;
-        TaskExecutor() = default;
-        ~TaskExecutor() = default;
+        using ptr = std::shared_ptr<TaskExecutorManager>;
+        TaskExecutorManager() = default;
+        virtual ~TaskExecutorManager() = default;
 
         size_t getExecutorSize() const { return m_threads.size(); }
-        
+        TaskExecutor::ptr getExecutor() { return m_threads[m_thread_pos++ % m_threads.size()]; }
+        void getExecutorDelay(const std::function<void(const std::vector<int>&)> &cb) {}
+
     protected:
         size_t addPoller(const std::string &name, size_t size);
+        size_t                          m_thread_pos = 0;
         std::vector<EventPoller::ptr>   m_threads;
     private:
     };
 
-    class EventPollerPool {
+    class EventPollerPool : public TaskExecutorManager,
+            public std::enable_shared_from_this<EventPollerPool> {
     public:
         using ptr = std::shared_ptr<EventPollerPool>;
-        ~EventPollerPool() = default;
-        static void setPoolSize(size_t size = 0);
+        EventPollerPool() {addPoller("event poller", m_pool_size); }
+        ~EventPollerPool() override = default;
+        void setPoolSize(size_t size = 0) { m_pool_size = size; }
+        EventPoller::ptr getFirstPoller() { return std::dynamic_pointer_cast<EventPoller>(m_threads.front()); }
+        EventPoller::ptr getPoller(bool prefer_current_poller = true) {
+            //auto poller = EventPoller::
+            //
+            return std::dynamic_pointer_cast<EventPoller>(getExecutor());
+        }
     private:
-        static size_t       s_pool_size;
+        size_t       m_pool_size = 0;
+    };
+
+    class WorkThreadPool : public TaskExecutorManager,
+            public std::enable_shared_from_this<WorkThreadPool> {
+    public:
+        using ptr = std::shared_ptr<WorkThreadPool>;
+        WorkThreadPool() { addPoller("work poller", m_poll_size); }
+        ~WorkThreadPool() override = default;
+        void setPoolSize(size_t size = 0) { m_poll_size = size; }
+        EventPoller::ptr getFirstPoller() { return std::dynamic_pointer_cast<EventPoller>(m_threads.front()); }
+        EventPoller::ptr getPoller() { return std::dynamic_pointer_cast<EventPoller>(getExecutor()); }
+    private:
+        size_t  m_poll_size = 0;
     };
 
 }

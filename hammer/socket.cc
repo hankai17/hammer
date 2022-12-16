@@ -7,6 +7,7 @@
 #include "log.hh"
 #include "uv_errno.hh"
 #include "socket_ops.hh"
+#include "singleton.hh"
 
 #define LOCK_GUARD(mutex) std::lock_guard<decltype(mutex)> lock(mutex)
 
@@ -47,7 +48,7 @@ namespace hammer {
         }
     }
 
-    void Socket::closeSocket() {
+    void Socket::closeSocket() { // 取消与SocketFD的耦合关系 // 通常用于起 新连接(connect)
         m_conn_timer = nullptr;
         m_conn_cb = nullptr;
 
@@ -264,6 +265,28 @@ namespace hammer {
         return -1 != ret;
     }
 
+    bool Socket::listen(const SocketFD::ptr &sock) {
+        closeSocket();
+        std::weak_ptr<SocketFD> weak_sock = sock;
+        std::weak_ptr<Socket>   weak_self = shared_from_this();
+        m_enable_recv = true;
+        int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::ERROR,
+                [weak_sock, weak_self](int event) {
+            auto strong_self = weak_self.lock();
+            auto strong_sock = weak_sock.lock();
+            if (!strong_self || !strong_sock) {
+                return;
+            }
+            strong_self->onAccept(strong_sock, event);
+        });
+        if (ret == -1) {
+            return false;
+        }
+        LOCK_GUARD(m_socketFD_mutex);
+        m_fd = sock; // m_fd 是listen的主/被fd 它仅是Socket对象的一个引用 构造时传入, 两者(SocketFD Socket)关系不大 两者解耦
+        return true;
+    }
+
     int Socket::onAccept(const SocketFD::ptr &sock, int event) {
         int fd;
         while (1) {
@@ -326,6 +349,95 @@ namespace hammer {
                 return -1;
             }
         }
+    }
+
+    void Socket::onConnected(const SocketFD::ptr &sock, const onErrCB &cb) {
+        auto err = getSocketError(sock, false);
+        if (err) {
+            cb(err);
+            return;
+        }
+        getPoller()->delEvent(sock->getFD()); // ?
+        if (!attachEvent(sock)) {
+            cb(SocketException(ERRCode::OTHER, "add event to poller failed when connected"));
+            return;
+        }
+        cb(err);
+    }
+
+    void Socket::connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
+                 const std::string &local_ip, uint16_t local_port) {
+        closeSocket();
+        std::weak_ptr<Socket> weak_self = shared_from_this();
+        auto conn_cb = [err_cb, weak_self](const SocketException &err) {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return;
+            }
+            strong_self->m_conn_cb = nullptr;
+            strong_self->m_conn_timer = nullptr;
+            if (err) {
+                LOCK_GUARD(strong_self->m_socketFD_mutex);
+                strong_self->m_fd = nullptr;
+            }
+            err_cb(err);
+        };
+
+        auto async_conn_cb = std::make_shared<std::function<void(int)>>([weak_self, err_cb](int sock) {
+            auto strong_self = weak_self.lock();
+            if (sock == -1 || !strong_self) {
+                if (!strong_self) {
+                    if (sock >= 0) {
+                        close(sock);
+                    }
+                } else {
+                    err_cb(SocketException(ERRCode::DNS, get_uv_errmsg(true)));
+                }
+                return;
+            }
+            auto strong_sock = std::make_shared<SocketFD>(sock, SocketFD::SocketType::TCP,
+                    strong_self->getPoller());
+            std::weak_ptr<SocketFD> weak_sock = strong_sock;
+            int ret = strong_self->getPoller()->addEvent(sock, EventPoller::Event::WRITE,
+                    [weak_self, weak_sock, err_cb](int event) {
+                auto strong_self = weak_self.lock();
+                auto strong_sock = weak_sock.lock();
+                if (strong_self && strong_sock) {
+                    strong_self->onConnected(strong_sock, err_cb);
+                }
+            });
+            if (ret == -1) {
+                err_cb(SocketException(ERRCode::OTHER, "add event to poller failed when start connect"));
+                return;
+            }
+            LOCK_GUARD(strong_self->getFdMutex());
+            strong_self->setSockFD(strong_sock);
+        });
+
+        if (SocketOps::is_ipv4(url.c_str()) ||
+                SocketOps::is_ipv6(url.c_str())) {
+            (*async_conn_cb)(SocketOps::connect(url.data(), port, true, local_ip.data(), local_port));
+        } else {
+            auto poller = m_poller;
+            std::weak_ptr<std::function<void(int)>> weak_task = async_conn_cb;
+            Singleton<WorkThreadPool>::instance().getExecutor()->async([url, port, local_ip, local_port, weak_task, poller]() {
+                int sock = SocketOps::connect(url.data(), port, true, local_ip.data(), local_port);
+                poller->async([sock, weak_task]() {
+                    auto strong_task = weak_task.lock();
+                    if (strong_task) {
+                        (*strong_task)(sock);
+                    } else {
+                        close(sock);
+                    }
+                });
+            });
+            m_conn_cb = async_conn_cb;
+        }
+
+        m_conn_timer = std::make_shared<Timer>(timeout, [weak_self, err_cb]()->bool {
+            err_cb(SocketException(ERRCode::TIMEOUT, uv_strerror(UV_ETIMEDOUT)));
+            return false;
+        }, m_poller);
     }
 
 }
