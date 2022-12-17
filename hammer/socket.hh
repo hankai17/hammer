@@ -92,7 +92,7 @@ namespace hammer {
         using onErrCB = std::function<void(const SocketException &)>;
         using onReadCB = std::function<void(const MBuffer::ptr &, struct sockaddr *, int addr_len)>;
         using onAcceptCB = std::function<void(Socket::ptr &, std::shared_ptr<void> &)>;
-        using onFlushCB = std::function<bool()>;
+        using onWrittenCB = std::function<bool()>;
         using onCreateSocketCB = std::function<ptr(const EventPoller::ptr &)>;
 
         Socket(const EventPoller::ptr poller = nullptr, bool enable_mutex = true);
@@ -101,27 +101,40 @@ namespace hammer {
         static Socket::ptr createSocket(const EventPoller::ptr &poller, bool enable_mutex = true);
         SocketFD::ptr setSocketFD(int fd);
 
+        std::string getLocalIP();
+        uint16_t getLocalPort();
+        std::string getPeerIP();
+        uint16_t getPeerPort();
+
         bool emitErr(const SocketException &err) noexcept;
-        void stopWriteAbleEvent(const SocketFD::ptr &sock);
+        void enableRead(const SocketFD::ptr &sock);     // default enable in attachEvent. Never use xxRead !
+        void disableRead(const SocketFD::ptr &sock);    // Because we(upper) always enable read Unless a DONE sig
+        void enableWrite(const SocketFD::ptr &sock);
+        void disableWrite(const SocketFD::ptr &sock);
+        bool isReadTriggered() const { return m_read_triggered; }
+        bool isWriteTriggered() const { return m_write_triggered; }
 
         ssize_t onRead(const SocketFD::ptr &sock, bool is_udp) noexcept;
+        void onWritten(const SocketFD::ptr &sock);
         bool writeData(const SocketFD::ptr &sock, bool poller_thead);
-        void onWriteAble(const SocketFD::ptr &sock);
+        void onWrite(const SocketFD::ptr &sock);
 
         bool attachEvent(const SocketFD::ptr &sock);
 
         bool listen(const SocketFD::ptr &sock);
+        bool listen(uint16_t port, const std::string& local_ip, int backlog);
         int onAccept(const SocketFD::ptr &sock, int event);
 
         void onConnected(const SocketFD::ptr &sock, const onErrCB &cb);
         void connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
                 const std::string &local_ip, uint16_t local_port);
 
-
         //////
         EventPoller::ptr getPoller() const { return m_poller; }
         MutexWrapper<std::recursive_mutex> &getFdMutex() const { return m_socketFD_mutex; }
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
+        const onErrCB &getErrCB() { return m_on_err_cb; }
+        void setOnWrittenCB(onWrittenCB cb);
 
     private:
         EventPoller::ptr    m_poller = nullptr;
@@ -135,10 +148,12 @@ namespace hammer {
         onCreateSocketCB    m_on_before_accept_cb = nullptr; // consutruct by self costom
         onAcceptCB          m_on_accept_cb = nullptr;
         onReadCB            m_on_read_cb = nullptr;
-        onFlushCB           m_on_flush_cb = nullptr;
+        onWrittenCB         m_on_written_cb = nullptr;
         MutexWrapper<std::recursive_mutex>  m_event_cb_mutex;
 
-        bool                m_enable_recv = true;
+        bool                m_read_enable = false;
+        bool                m_write_enable = false;
+        bool                m_read_triggered = false;
         bool                m_write_triggered = true;
 
         MBuffer::ptr        m_write_buffer_waiting = nullptr;

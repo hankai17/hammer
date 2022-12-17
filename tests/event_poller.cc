@@ -33,9 +33,21 @@ int poller_test()
     return 0;
 }
 
+int poller_pool_test()
+{
+    //hammer::Singleton<hammer::EventPollerPool>::instance();
+    for (int i = 0; i < 8; i++) {
+        hammer::Singleton<hammer::EventPollerPool>::instance().getExecutor()->async([i](){
+            HAMMER_LOG_DEBUG(g_root_logger) << i << " normal cb";
+        });
+    }
+    return 0;
+}
+
 int main()
 {
-    poller_test();
+    //poller_test();
+    poller_pool_test();
     while(1) { sleep(1); }
     return 0;
 }

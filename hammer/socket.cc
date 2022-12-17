@@ -72,6 +72,38 @@ namespace hammer {
         return socket;
     }
 
+    std::string Socket::getLocalIP() {
+        LOCK_GUARD(m_socketFD_mutex);
+        if (!m_fd) {
+            return "";
+        }
+        return SocketOps::get_local_ip(m_fd->getFD());
+    }
+
+    uint16_t Socket::getLocalPort() {
+        LOCK_GUARD(m_socketFD_mutex);
+        if (!m_fd) {
+            return 0;
+        }
+        return SocketOps::get_local_port(m_fd->getFD());
+    }
+
+    std::string Socket::getPeerIP() {
+        LOCK_GUARD(m_socketFD_mutex);
+        if (!m_fd) {
+            return "";
+        }
+        return SocketOps::get_peer_ip(m_fd->getFD());
+    }
+
+    uint16_t Socket::getPeerPort() {
+        LOCK_GUARD(m_socketFD_mutex);
+        if (!m_fd) {
+            return 0;
+        }
+        return SocketOps::get_peer_port(m_fd->getFD());
+    }
+
     static ssize_t recvFrom(int fd, void* buffer, size_t length, struct sockaddr_storage &addr, socklen_t len, int flags = 0) {
         return ::recvfrom(fd, buffer, length, flags, (sockaddr*)&addr, &len);
     }
@@ -111,12 +143,72 @@ namespace hammer {
     }
 
     bool Socket::emitErr(const SocketException &err) noexcept {
-        // TODO
+        {
+            LOCK_GUARD(m_socketFD_mutex);
+            if (!m_fd) {
+                return false;
+            }
+        }
+        closeSocket();
+        std::weak_ptr<Socket> weak_self = shared_from_this();
+        m_poller->async([weak_self, err]() {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return;
+            }
+            LOCK_GUARD(strong_self->getFdMutex());
+            try {
+                strong_self->getErrCB()(err);
+            } catch (std::exception &e) {
+                HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit on_err: " << e.what();
+            }
+        });
         return true;
     }
 
-    void Socket::stopWriteAbleEvent(const SocketFD::ptr &sock) {
-        // TODO
+    void Socket::enableRead(const SocketFD::ptr &sock) {
+        if (m_read_enable) {
+            return;
+        }
+        m_read_enable = true;
+#if 0
+        int flag = 0;
+        m_poller->modEvent(sock->getFD(), flag | EventPoller::Event::READ | EventPoller::Event::ERROR);
+#endif
+    }
+
+    void Socket::disableRead(const SocketFD::ptr &sock) {
+        if (m_read_enable == false) {
+            return;
+        }
+        m_read_enable = false;
+#if 0
+        int flag = 0;
+        m_poller->modEvent(sock->getFD(), flag | EventPoller::Event::ERROR);
+#endif
+    }
+
+    void Socket::enableWrite(const SocketFD::ptr &sock) { // only called by other thread. Never use
+        if (m_write_enable) {
+            return;
+        }
+        m_write_enable = true;
+#if 0
+        m_write_triggered = false;
+        m_poller->modEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR);
+#endif
+    }
+
+    void Socket::disableWrite(const SocketFD::ptr &sock) {
+        if (m_write_enable == false) {
+            return;
+        }
+        m_write_enable = false;
+#if 0
+        m_write_triggered = true;
+        int flag = 0;
+        m_poller->modEvent(sock->getFD(), flag | EventPoller::Event::ERROR);
+#endif
     }
 
     ssize_t Socket::onRead(const SocketFD::ptr &sock, bool is_udp) noexcept {
@@ -125,7 +217,7 @@ namespace hammer {
         struct sockaddr_storage addr;
         socklen_t len = sizeof(addr);
 
-        while (m_enable_recv) {
+        while (m_read_enable) {
             do {
                 std::vector<iovec> iovs = m_read_buffer->writeBuffers(32 * 1024);
                 nread = recvFrom(fd, &iovs[0], iovs.size(), addr, len);
@@ -147,6 +239,7 @@ namespace hammer {
                         HAMMER_LOG_WARN(g_logger) << "Recv err on udp socket: " << fd << uv_strerror(err);
                     }
                 }
+                return ret;
             }
             ret += nread;
             m_read_buffer->product(nread);
@@ -160,6 +253,17 @@ namespace hammer {
             }
         }
         return 0;
+    }
+
+    void Socket::onWritten(const SocketFD::ptr &sock) {
+        bool flag;
+        {
+            LOCK_GUARD(m_event_cb_mutex);
+            flag = m_on_written_cb();
+        }
+        if (!flag) {
+            setOnWrittenCB(nullptr);
+        }
     }
 
     bool Socket::writeData(const SocketFD::ptr &sock, bool poller_thread) {
@@ -180,8 +284,9 @@ namespace hammer {
                         break;
                     }
                 }
-                if (poller_thread) {
-                    // TODO
+                if (poller_thread) { // all data consumed done
+                    disableWrite(sock); // for LT mode
+                    onWritten(sock);
                 }
                 return true;
             } while (0);
@@ -194,21 +299,21 @@ namespace hammer {
             if (ret > 0) {
                 if ((size_t)ret < tmp_buffer->readAvailable()) {
                     if (!poller_thread) {
-                        // TODO
+                        enableWrite(sock);
                     }
                 }
                 tmp_buffer->consume(ret);
             } else if (ret < 0) {
                 if (get_uv_error(true) == UV_EAGAIN) {
                     if (!poller_thread) {
-                        // TODO
+                        enableWrite(sock);
                     }
                 }
             } else {
                 if (is_udp) {
                     tmp_buffer->consume(tmp_buffer->readAvailable());
                 }
-                // emitErr
+                emitErr(toSocketException(get_uv_error(true)));
                 return false;
             }
         }
@@ -221,7 +326,7 @@ namespace hammer {
         return poller_thread ? writeData(sock, poller_thread) : true;
     }
 
-    void Socket::onWriteAble(const SocketFD::ptr &sock) {
+    void Socket::onWrite(const SocketFD::ptr &sock) {
         bool empty_waiting;
         bool empty_sending;
         {
@@ -233,7 +338,7 @@ namespace hammer {
             empty_sending = m_write_buffer_sending->readAvailable() == 0;
         }
         if (empty_sending && empty_waiting) {
-            stopWriteAbleEvent(sock);
+            disableWrite(sock);
         } else {
             writeData(sock, true);
         }
@@ -242,7 +347,7 @@ namespace hammer {
     bool Socket::attachEvent(const SocketFD::ptr &sock) {
         std::weak_ptr<Socket> weak_self = shared_from_this();
         std::weak_ptr<SocketFD> weak_sock = sock;
-        m_enable_recv = true;
+        m_read_enable = true;
         m_read_buffer = m_poller->getSharedBuffer();
         auto is_udp = sock->getType() == SocketFD::SocketType::UDP;
         int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR,
@@ -256,7 +361,7 @@ namespace hammer {
                 strong_self->onRead(strong_sock, is_udp);
             }
             if (event & EventPoller::Event::WRITE) {
-                strong_self->onWriteAble(strong_sock);
+                strong_self->onWrite(strong_sock);
             }
             if (event & EventPoller::Event::ERROR) {
                 strong_self->emitErr(getSocketError(strong_sock));
@@ -269,7 +374,7 @@ namespace hammer {
         closeSocket();
         std::weak_ptr<SocketFD> weak_sock = sock;
         std::weak_ptr<Socket>   weak_self = shared_from_this();
-        m_enable_recv = true;
+        m_read_enable = true;
         int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::ERROR,
                 [weak_sock, weak_self](int event) {
             auto strong_self = weak_self.lock();
@@ -285,6 +390,14 @@ namespace hammer {
         LOCK_GUARD(m_socketFD_mutex);
         m_fd = sock; // m_fd 是listen的主/被fd 它仅是Socket对象的一个引用 构造时传入, 两者(SocketFD Socket)关系不大 两者解耦
         return true;
+    }
+
+    bool Socket::listen(uint16_t port, const std::string& local_ip, int backlog) {
+        int sock = SocketOps::listen(port, local_ip.data(), backlog);
+        if (sock == -1) {
+            return false;
+        }
+        return listen(std::make_shared<SocketFD>(sock, SocketFD::SocketType::TCP, m_poller));
     }
 
     int Socket::onAccept(const SocketFD::ptr &sock, int event) {
@@ -438,6 +551,15 @@ namespace hammer {
             err_cb(SocketException(ERRCode::TIMEOUT, uv_strerror(UV_ETIMEDOUT)));
             return false;
         }, m_poller);
+    }
+
+    void Socket::setOnWrittenCB(onWrittenCB cb) {
+        LOCK_GUARD(m_event_cb_mutex);
+        if (cb) {
+            m_on_written_cb = std::move(cb);
+        } else {
+            m_on_written_cb = []() {return true; };
+        }
     }
 
 }
