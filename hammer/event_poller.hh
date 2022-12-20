@@ -125,6 +125,7 @@ namespace hammer {
         std::thread::id getThreadId() const { return m_thread_id; }
         bool isCurrentThread() { return m_thread_id == std::this_thread::get_id(); }
         MBuffer::ptr getSharedBuffer();
+        static EventPoller::ptr getCurrentPoller();
         
         Task::ptr async_l(TaskIn task, bool first = false);
         Task::ptr async(TaskIn task) override;
@@ -198,6 +199,11 @@ namespace hammer {
         size_t getExecutorSize() const { return m_threads.size(); }
         TaskExecutor::ptr getExecutor() { return m_threads[m_thread_pos++ % m_threads.size()]; }
         void getExecutorDelay(const std::function<void(const std::vector<int>&)> &cb) {}
+        void for_each(const std::function<void(const TaskExecutor::ptr &)> &cb) {
+            for (auto &ep : m_threads) {
+                cb(ep);
+            }
+        }
 
     protected:
         size_t addPoller(const std::string &name, size_t size);
@@ -210,13 +216,15 @@ namespace hammer {
             public std::enable_shared_from_this<EventPollerPool> {
     public:
         using ptr = std::shared_ptr<EventPollerPool>;
-        EventPollerPool() {addPoller("event poller", m_pool_size); }
+        EventPollerPool() { addPoller("event poller", m_pool_size); }
         ~EventPollerPool() override = default;
         void setPoolSize(size_t size = 0) { m_pool_size = size; }
         EventPoller::ptr getFirstPoller() { return std::dynamic_pointer_cast<EventPoller>(m_threads.front()); }
         EventPoller::ptr getPoller(bool prefer_current_poller = true) {
-            //auto poller = EventPoller::
-            //
+            auto poller = EventPoller::getCurrentPoller();
+            if (prefer_current_poller && poller) {
+                return poller;
+            }
             return std::dynamic_pointer_cast<EventPoller>(getExecutor());
         }
     private:

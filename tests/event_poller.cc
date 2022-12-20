@@ -5,6 +5,7 @@
 #include "hammer/log.hh"
 #include "hammer/util.hh"
 #include "hammer/event_poller.hh"
+#include "hammer/tcp_server.hh"
 
 static hammer::Logger::ptr g_root_logger = HAMMER_LOG_NAME("root");
 
@@ -44,10 +45,18 @@ int poller_pool_test()
     return 0;
 }
 
+int tcp_server_test()
+{
+    auto poller = hammer::Singleton<hammer::EventPollerPool>::instance().getPoller();
+    hammer::TcpServer::ptr server = std::make_shared<hammer::TcpServer>(poller);
+    server->start(9527, "0.0.0.0");
+    while(1) { sleep(1); }
+    return 0;
+}
+
 int main()
 {
-    //poller_test();
-    poller_pool_test();
+    tcp_server_test();
     while(1) { sleep(1); }
     return 0;
 }

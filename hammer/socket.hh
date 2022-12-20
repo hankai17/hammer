@@ -6,6 +6,7 @@
 #define HAMMER_SOCKET_HH
 
 #include <unistd.h>
+#include <sys/socket.h>
 #include <memory>
 
 #include "nocopy.hh"
@@ -64,6 +65,19 @@ namespace hammer {
         Mtx     m_mutex; 
     };
 
+    class SocketNO {
+    public:
+        using ptr = std::shared_ptr<SocketNO>;
+        SocketNO(int fd) : m_fd(fd) {}
+        ~SocketNO() {
+            ::shutdown(m_fd, SHUT_RDWR);
+            close(m_fd);
+        }
+        int getFD() const { return m_fd; }
+    private:
+        int         m_fd;
+    };
+
     class SocketFD : public Nocopyable {
     public:
         using ptr = std::shared_ptr<SocketFD>;
@@ -73,14 +87,23 @@ namespace hammer {
             UDP = 1,
         }; 
         SocketFD(int fd, SocketType type, const EventPoller::ptr &poller) :
-                m_fd(fd), m_type(type), m_poller(poller) {}
-        ~SocketFD() {
-            m_poller->delEvent(m_fd, [](int) {});
+                m_type(type), m_poller(poller) {
+            m_fd = std::make_shared<SocketNO>(fd);
         }
-        int getFD() const { return m_fd; }
+        SocketFD(const SocketFD &that, const EventPoller::ptr &poller) {
+            m_fd = that.m_fd;
+            m_poller = poller;
+            if (m_poller == that.m_poller) {
+                throw std::invalid_argument("copy a SocketFD with same poller");
+            }
+        }
+        ~SocketFD() {
+            m_poller->delEvent(m_fd->getFD(), [](int) {});
+        }
+        int getFD() const { return m_fd->getFD(); }
         SocketType getType() const { return m_type; }
     private:
-        int                 m_fd;
+        SocketNO::ptr       m_fd;
         SocketType          m_type;
         EventPoller::ptr    m_poller;
     };
@@ -135,6 +158,13 @@ namespace hammer {
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
         const onErrCB &getErrCB() { return m_on_err_cb; }
         void setOnWrittenCB(onWrittenCB cb);
+        void setOnBeforeAccept(onCreateSocketCB cb);
+        void setOnAccept(onAcceptCB cb);
+        void setOnRead(onReadCB cb);
+        void setOnErr(onErrCB cb);
+
+        SocketFD::ptr cloneSocketFD(const Socket &other);
+        bool cloneFromListenSocket(const Socket &other);
 
     private:
         EventPoller::ptr    m_poller = nullptr;

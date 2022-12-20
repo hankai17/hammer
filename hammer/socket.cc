@@ -53,6 +53,9 @@ namespace hammer {
         m_conn_cb = nullptr;
 
         LOCK_GUARD(m_socketFD_mutex);
+        if (m_fd) {
+            HAMMER_LOG_WARN(g_logger) << "Socket::closeSocket fd: " << m_fd->getFD();
+        }
         m_fd = nullptr;
     }
 
@@ -243,6 +246,7 @@ namespace hammer {
             }
             ret += nread;
             m_read_buffer->product(nread);
+            HAMMER_LOG_WARN(g_logger) << "onRead product: " << nread << m_read_buffer->toString();
 
             LOCK_GUARD(m_event_cb_mutex);
             try {
@@ -407,6 +411,7 @@ namespace hammer {
                 do {
                     fd = (int)accept(sock->getFD(), nullptr, nullptr);
                 } while (-1 == fd && UV_EINTR == get_uv_error(true));
+                HAMMER_LOG_WARN(g_logger) << "onAccept...fd: " << fd;
 
                 if (fd == -1) {
                     int err = get_uv_error(true);
@@ -428,7 +433,7 @@ namespace hammer {
                 Socket::ptr new_sock;
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
-                    new_sock = m_on_before_accept_cb(m_poller);
+                    new_sock = m_on_before_accept_cb(m_poller); // 决定某个线程
                 } catch (std::exception &e) {   
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when on_before_accept: " << e.what();
                     close(fd);
@@ -439,17 +444,25 @@ namespace hammer {
                 }
                 auto new_sock_fd = new_sock->setSocketFD(fd);
                 std::shared_ptr<void> completed(nullptr, [new_sock, new_sock_fd](void *) {
+                    // 1. schedule到其他线程后 开始执行task 且执行的很慢(一般流程) 而这里的对象(socket/fd)引用计数都--了且开始了新一轮的accept
+                    // 其他线程执行完task后 没有对socket/fd 做任何提升动作 便开始了析构(complete socket fd)动作
+                    // 2. schedule到其他线程后 开始执行task 且执行的很快 而这里执行很慢(卡住了) 也没有开启新一轮accept 所有对象(socket/fd)都在 当在析构complete时 将
+                    // fd挂到其所属线程的树上 而且很快拿到读事件 把对象(socket/fd)都提升了 便开始读写事件
                     try {
+                        HAMMER_LOG_WARN(g_logger) << "completed func1, new_sock.use_count: " << new_sock.use_count()
+                                                  << ", new_sock_fd.use_count: " << new_sock_fd.use_count();
                         if (!new_sock->attachEvent(new_sock_fd)) {
                             new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
                         }
+                        HAMMER_LOG_WARN(g_logger) << "completed func2, new_sock.use_count: " << new_sock.use_count()
+                                                  << ", new_sock_fd.use_count: " << new_sock_fd.use_count();
                     } catch (std::exception &e) {
                         HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
                     }
                 });
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
-                    m_on_accept_cb(new_sock, completed);
+                    m_on_accept_cb(new_sock, completed); // 只负责将新socket schedule到其它线程
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
                     continue;
@@ -560,6 +573,72 @@ namespace hammer {
         } else {
             m_on_written_cb = []() {return true; };
         }
+    }
+
+    void Socket::setOnBeforeAccept(onCreateSocketCB cb) {
+        LOCK_GUARD(m_event_cb_mutex);
+        if (cb) {
+            m_on_before_accept_cb = std::move(cb);
+        } else {
+            m_on_before_accept_cb = [](const EventPoller::ptr &poller) {
+                return nullptr;
+            };
+        }
+    }
+
+    void Socket::setOnAccept(onAcceptCB cb) {
+        LOCK_GUARD(m_event_cb_mutex);
+        if (cb) {
+            m_on_accept_cb = std::move(cb);
+        } else {
+            m_on_accept_cb = [](Socket::ptr &sock, std::shared_ptr<void> &complete) {
+                HAMMER_LOG_WARN(g_logger) << "Socket not set accept cb";
+            };
+        }
+    }
+
+    void Socket::setOnRead(onReadCB cb) {
+        LOCK_GUARD(m_event_cb_mutex);
+        if (cb) {
+            m_on_read_cb = std::move(cb);
+        } else {
+            m_on_read_cb = [](const MBuffer::ptr &, struct sockaddr *, int) {
+                HAMMER_LOG_WARN(g_logger) << "Socket not set read cb";
+            };
+        }
+    }
+
+    void Socket::setOnErr(onErrCB cb) {
+        LOCK_GUARD(m_event_cb_mutex);
+        if (cb) {
+            m_on_err_cb = std::move(cb);
+        } else {
+            m_on_err_cb = [](const SocketException &err) {
+                HAMMER_LOG_WARN(g_logger) << "Socket not set err cb, err: " << err.what();
+            };
+        }
+
+    }
+
+    SocketFD::ptr Socket::cloneSocketFD(const Socket &other) {
+        SocketFD::ptr sock;
+        {
+            LOCK_GUARD(other.m_socketFD_mutex);
+            if (!other.m_fd) {
+                HAMMER_LOG_WARN(g_logger) << "SocketFD is nullptr";
+                return nullptr;
+            }
+            sock = std::make_shared<SocketFD>(*(other.m_fd), m_poller);
+        }
+        return sock;
+    }
+
+    bool Socket::cloneFromListenSocket(const Socket &other) {
+        auto sock = cloneSocketFD(other);
+        if (!sock) {
+            return false;
+        }
+        return listen(sock);
     }
 
 }

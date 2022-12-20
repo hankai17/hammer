@@ -34,7 +34,7 @@ set(LIB_SRC
         hammer/uv_errno.cc
         hammer/socket_ops.cc
         hammer/socket.cc
-        )
+        hammer/tcp_server.cc)
 
 add_library(${PROJECT_NAME} SHARED ${LIB_SRC})
 
