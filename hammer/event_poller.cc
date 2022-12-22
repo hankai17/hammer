@@ -53,7 +53,6 @@ namespace hammer {
     }
 
     Task::ptr EventPoller::async_l(TaskIn task, bool first) {
-        HAMMER_LOG_WARN(g_logger) << "async_l...";
         if (isCurrentThread()) {
             task();
             return nullptr;
@@ -88,25 +87,20 @@ namespace hammer {
             std::lock_guard<std::mutex> lock(m_task_mutex);
             task_list.swap(m_task_list);
         }
-        HAMMER_LOG_WARN(g_logger) << "onPipeEvent...";
         task_list.for_each([&](const Task::ptr &task) {
             try {
-                HAMMER_LOG_WARN(g_logger) << "onPipeEvent before task";
-                (*task)(); // 待所有任务执行完毕后 list上的所有任务才会析构
-                HAMMER_LOG_WARN(g_logger) << "onPipeEvent after task";
+                (*task)();
             } catch (ExitException &) {
                 m_exit_flag = true;
             } catch (std::exception &e) {
                 HAMMER_LOG_WARN(g_logger) << "Exception occurred when do async task: " << e.what();
             }
         });
-        HAMMER_LOG_WARN(g_logger) << "onPipeEvent done...";
     }
 
     int EventPoller::addEvent(int fd, int event, PollEventCB cb) {
         HAMMER_ASSERT(cb);
         if (isCurrentThread()) {
-            HAMMER_LOG_WARN(g_logger) << "addEvent fd: " << fd;
 		    epoll_event ev = {0};
             ev.events = toEpollEvent(event);
             ev.data.fd = fd;
@@ -116,7 +110,6 @@ namespace hammer {
             }
             return ret;
         }
-        HAMMER_LOG_WARN(g_logger) << "addEvent async fd: " << fd;
         async([this, fd, event, cb]() {
             addEvent(fd, event, std::move(cb));
         });
@@ -182,7 +175,6 @@ namespace hammer {
     }
 
     EventPoller::TimerTask::ptr EventPoller::doTimerTask(uint64_t ms, std::function<uint64_t(void)> task) {
-        return nullptr;
         EventPoller::TimerTask::ptr ret = std::make_shared<TimerTask>(std::move(task));
         uint64_t timer_deadline = getCurrentMillSecond() + ms; 
         async_first([timer_deadline, ret, this]() {

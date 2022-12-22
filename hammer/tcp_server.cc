@@ -5,9 +5,29 @@
 #include "tcp_server.hh"
 #include "util.hh"
 #include "log.hh"
+#include "socket_ops.hh"
 
 namespace hammer {
     static Logger::ptr g_logger = HAMMER_LOG_NAME("system");
+
+    static void defaultReadCB(const MBuffer::ptr &buf, 
+            struct sockaddr *addr, int addr_len) {
+        HAMMER_LOG_WARN(g_logger) << "defaultReadCB, MBuffer len: " << buf->readAvailable();
+        if (buf->readAvailable()) {
+            buf->clear();
+        }
+        return;
+    }
+
+    static bool defaultWrittenCB() {
+        HAMMER_LOG_WARN(g_logger) << "defaultWrittenCB: written done";
+        return true;
+    }
+
+    static void defaultErrCB(const SocketException & e) {
+        HAMMER_LOG_WARN(g_logger) << "defaultErrCB err: " << e.what();
+        return;
+    }
 
     TcpServer::TcpServer(const EventPoller::ptr &poller) :
             m_poller(poller) {
@@ -19,8 +39,9 @@ namespace hammer {
             return onBeforeAcceptConnection(poller);
         });
         m_socket->setOnAccept([this](Socket::ptr &sock, std::shared_ptr<void>& complete) {
-            TcpServer::ptr server = shared_from_this();
-            sock->getPoller()->async([server, sock, complete]() { // 先执行task 最后析构list 析构complete(sock-- sockfd--) 析构sock(sock-- sockfd--调用close)
+            auto poller = sock->getPoller().get();
+            auto server = getServer(poller);
+            poller->async([server, sock, complete]() {
                 server->onAcceptConnection(sock);
             });
         });
@@ -36,8 +57,48 @@ namespace hammer {
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {
-        // reset socket's rwe cb
-        HAMMER_LOG_WARN(g_logger) << "onAcceptConnection...sock.use: " << sock.use_count();
+        std::weak_ptr<TcpServer> weak_self = std::dynamic_pointer_cast<TcpServer>(shared_from_this());
+        std::weak_ptr<Socket> weak_sock = sock;
+        auto sock_ptr = sock.get();
+        auto success = m_tcp_conns.emplace(sock_ptr, sock).second;
+        HAMMER_ASSERT(success = true);
+
+        //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
+        sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
+            //HAMMER_LOG_WARN(g_logger) << "defaultReadCB, MBuffer len: " << buf->readAvailable();
+            if (buf->readAvailable()) {
+                buf->clear();
+            }
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return;
+            }
+            HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
+
+            std::string resp = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello world";
+            auto strong_sock = weak_sock.lock();
+            if (!strong_sock) {
+                return;
+            }
+            strong_sock->send(resp);
+        });
+        sock->setOnWritten(m_on_written_socket == nullptr ? defaultWrittenCB : m_on_written_socket);
+        sock->setOnErr([weak_self, weak_sock, sock_ptr](const SocketException &e) {
+            OnceToken token(nullptr, [&]() {
+                auto strong_self = weak_self.lock();
+                if (!strong_self) {
+                    return;
+                }
+                HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
+                strong_self->m_tcp_conns.erase(sock_ptr);
+                //HAMMER_LOG_WARN(g_logger) << "onErr erase sock_ptr";
+            });
+            auto sock = weak_sock.lock();
+            if (sock) {
+                //sock->
+            }
+        });
+        return;
     }
 
     TcpServer::ptr TcpServer::onCreateServer(const EventPoller::ptr &poller) {
@@ -59,6 +120,7 @@ namespace hammer {
             strong_self->inactivityCop();
             return true;
         }, m_poller);
+        m_parent = &that;
     }
 
     TcpServer::~TcpServer() {
@@ -71,6 +133,16 @@ namespace hammer {
         for (auto &it : m_tcp_conns) {
         }
         */
+    }
+
+    TcpServer::ptr TcpServer::getServer(const EventPoller *poller) const {
+        auto &ref = m_parent ? m_parent->m_cloned_server : m_cloned_server;
+        auto it = ref.find(poller);
+        if (it != ref.end()) {
+            return it->second;
+        }
+        return std::static_pointer_cast<TcpServer>(m_parent ? const_cast<TcpServer*>(m_parent)->shared_from_this() :
+                                              const_cast<TcpServer*>(this)->shared_from_this());
     }
 
     void TcpServer::start(uint16_t port, const std::string &host, uint32_t backlog) {
@@ -92,6 +164,7 @@ namespace hammer {
                 return;
             }
             auto server = onCreateServer(poller);
+            m_cloned_server[poller.get()] = server;
             server->cloneFrom(*this);
         });
     }

@@ -21,6 +21,7 @@ endif()
 set(LIBS ${PROJECT_NAME}
         pthread
         dl
+        jemalloc
         ${OPENSSL_LIBRARIES}
         )
 

@@ -151,13 +151,18 @@ namespace hammer {
         void onConnected(const SocketFD::ptr &sock, const onErrCB &cb);
         void connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
                 const std::string &local_ip, uint16_t local_port);
+        int flushAll();
+        ssize_t send_l(MBuffer::ptr buf, bool try_flush);
+        ssize_t send(const char *buf, size_t size = 0, struct sockaddr *addr = nullptr, socklen_t addr_len = 0, bool try_flush = true);
+        ssize_t send(std::string buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0, bool try_flush = true);
+        ssize_t send(MBuffer::ptr buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0, bool try_flush = true);
 
         //////
         EventPoller::ptr getPoller() const { return m_poller; }
         MutexWrapper<std::recursive_mutex> &getFdMutex() const { return m_socketFD_mutex; }
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
         const onErrCB &getErrCB() { return m_on_err_cb; }
-        void setOnWrittenCB(onWrittenCB cb);
+        void setOnWritten(onWrittenCB cb);
         void setOnBeforeAccept(onCreateSocketCB cb);
         void setOnAccept(onAcceptCB cb);
         void setOnRead(onReadCB cb);

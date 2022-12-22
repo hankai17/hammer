@@ -46,16 +46,15 @@ namespace hammer {
         if (!poller) {
             // TODO
         }
+        m_write_buffer_waiting = std::make_shared<MBuffer>();
+        m_write_buffer_sending = std::make_shared<MBuffer>();
     }
 
-    void Socket::closeSocket() { // 取消与SocketFD的耦合关系 // 通常用于起 新连接(connect)
+    void Socket::closeSocket() {
         m_conn_timer = nullptr;
         m_conn_cb = nullptr;
 
         LOCK_GUARD(m_socketFD_mutex);
-        if (m_fd) {
-            HAMMER_LOG_WARN(g_logger) << "Socket::closeSocket fd: " << m_fd->getFD();
-        }
         m_fd = nullptr;
     }
 
@@ -107,16 +106,16 @@ namespace hammer {
         return SocketOps::get_peer_port(m_fd->getFD());
     }
 
-    static ssize_t recvFrom(int fd, void* buffer, size_t length, struct sockaddr_storage &addr, socklen_t len, int flags = 0) {
-        return ::recvfrom(fd, buffer, length, flags, (sockaddr*)&addr, &len);
+    static ssize_t recvFrom(int fd, void* buffer, size_t length, struct sockaddr_storage *addr, socklen_t len, int flags = 0) { // TODO optimize
+        return ::recvfrom(fd, buffer, length, flags, (sockaddr*)addr, &len);
     }
 
-    static ssize_t recvFrom(int fd, iovec* buffers, size_t length, struct sockaddr_storage &addr, socklen_t len, int flags = 0) {
+    static ssize_t recvFrom(int fd, iovec* buffers, size_t length, struct sockaddr_storage *addr, socklen_t len, int flags = 0) {
         msghdr msg;
         memset(&msg, 0, sizeof(msg));
         msg.msg_iov = (iovec*)buffers;
         msg.msg_iovlen = length;
-        msg.msg_name = (void*)&addr;
+        msg.msg_name = (void*)addr;
         msg.msg_namelen = len;
         return ::recvmsg(fd, &msg, flags);
     }
@@ -223,7 +222,7 @@ namespace hammer {
         while (m_read_enable) {
             do {
                 std::vector<iovec> iovs = m_read_buffer->writeBuffers(32 * 1024);
-                nread = recvFrom(fd, &iovs[0], iovs.size(), addr, len);
+                nread = recvFrom(fd, &iovs[0], iovs.size(), &addr, len);
             } while (-1 == nread && UV_EINTR == get_uv_error(true));
             if (nread == 0) {
                 if (!is_udp) {
@@ -246,7 +245,6 @@ namespace hammer {
             }
             ret += nread;
             m_read_buffer->product(nread);
-            HAMMER_LOG_WARN(g_logger) << "onRead product: " << nread << m_read_buffer->toString();
 
             LOCK_GUARD(m_event_cb_mutex);
             try {
@@ -266,12 +264,12 @@ namespace hammer {
             flag = m_on_written_cb();
         }
         if (!flag) {
-            setOnWrittenCB(nullptr);
+            setOnWritten(nullptr);
         }
     }
 
     bool Socket::writeData(const SocketFD::ptr &sock, bool poller_thread) {
-        MBuffer::ptr tmp_buffer = nullptr;
+        MBuffer::ptr tmp_buffer = std::make_shared<MBuffer>();
         {
             LOCK_GUARD(m_write_buffer_sending_mutex);
             if (m_write_buffer_sending->readAvailable()) {
@@ -284,7 +282,12 @@ namespace hammer {
                     LOCK_GUARD(m_write_buffer_waiting_mutex);
                     if (m_write_buffer_waiting->readAvailable()) {
                         LOCK_GUARD(m_event_cb_mutex);
+#if 0
                         tmp_buffer = std::move(m_write_buffer_waiting);
+#else
+                        tmp_buffer->copyIn(*m_write_buffer_waiting.get());
+#endif
+                        m_write_buffer_waiting->clear();
                         break;
                     }
                 }
@@ -392,7 +395,7 @@ namespace hammer {
             return false;
         }
         LOCK_GUARD(m_socketFD_mutex);
-        m_fd = sock; // m_fd 是listen的主/被fd 它仅是Socket对象的一个引用 构造时传入, 两者(SocketFD Socket)关系不大 两者解耦
+        m_fd = sock;
         return true;
     }
 
@@ -411,7 +414,6 @@ namespace hammer {
                 do {
                     fd = (int)accept(sock->getFD(), nullptr, nullptr);
                 } while (-1 == fd && UV_EINTR == get_uv_error(true));
-                HAMMER_LOG_WARN(g_logger) << "onAccept...fd: " << fd;
 
                 if (fd == -1) {
                     int err = get_uv_error(true);
@@ -433,7 +435,7 @@ namespace hammer {
                 Socket::ptr new_sock;
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
-                    new_sock = m_on_before_accept_cb(m_poller); // 决定某个线程
+                    new_sock = m_on_before_accept_cb(m_poller);
                 } catch (std::exception &e) {   
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when on_before_accept: " << e.what();
                     close(fd);
@@ -444,25 +446,17 @@ namespace hammer {
                 }
                 auto new_sock_fd = new_sock->setSocketFD(fd);
                 std::shared_ptr<void> completed(nullptr, [new_sock, new_sock_fd](void *) {
-                    // 1. schedule到其他线程后 开始执行task 且执行的很慢(一般流程) 而这里的对象(socket/fd)引用计数都--了且开始了新一轮的accept
-                    // 其他线程执行完task后 没有对socket/fd 做任何提升动作 便开始了析构(complete socket fd)动作
-                    // 2. schedule到其他线程后 开始执行task 且执行的很快 而这里执行很慢(卡住了) 也没有开启新一轮accept 所有对象(socket/fd)都在 当在析构complete时 将
-                    // fd挂到其所属线程的树上 而且很快拿到读事件 把对象(socket/fd)都提升了 便开始读写事件
                     try {
-                        HAMMER_LOG_WARN(g_logger) << "completed func1, new_sock.use_count: " << new_sock.use_count()
-                                                  << ", new_sock_fd.use_count: " << new_sock_fd.use_count();
                         if (!new_sock->attachEvent(new_sock_fd)) {
                             new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
                         }
-                        HAMMER_LOG_WARN(g_logger) << "completed func2, new_sock.use_count: " << new_sock.use_count()
-                                                  << ", new_sock_fd.use_count: " << new_sock_fd.use_count();
                     } catch (std::exception &e) {
                         HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
                     }
                 });
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
-                    m_on_accept_cb(new_sock, completed); // 只负责将新socket schedule到其它线程
+                    m_on_accept_cb(new_sock, completed);
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
                     continue;
@@ -566,7 +560,64 @@ namespace hammer {
         }, m_poller);
     }
 
-    void Socket::setOnWrittenCB(onWrittenCB cb) {
+    int Socket::flushAll() {
+        LOCK_GUARD(m_socketFD_mutex);
+        if (!m_fd) {
+            return -1;
+        }
+        if (m_write_triggered) {
+            return writeData(m_fd, false) ? 0 : -1;
+        }
+        /*
+        TODO write timeout
+        if () {
+            return -1;
+        }
+        */
+        return 0;
+    }
+
+    ssize_t Socket::send_l(MBuffer::ptr buf, bool try_flush) {
+        auto size = buf ? buf->readAvailable() : 0;
+        if (!size) {
+            return 0;
+        }
+        {
+            LOCK_GUARD(m_write_buffer_waiting_mutex);
+            m_write_buffer_waiting->copyIn(*buf.get());
+            buf->clear();
+        }
+        if (try_flush) {
+            if (flushAll()) {
+                return -1;
+            }
+        }
+        return size;
+    }
+
+    ssize_t Socket::send(const char *buf, size_t size, struct sockaddr *addr, socklen_t addr_len, bool try_flush) {
+        if (size <= 0) {
+            size = strlen(buf);
+            if (!size) {
+                return 0;
+            }
+        }
+        auto buffer = std::make_shared<MBuffer>();
+        buffer->copyIn(buf);
+        return send(buffer, addr, addr_len, try_flush);
+    }
+
+    ssize_t Socket::send(std::string buf, struct sockaddr *addr, socklen_t addr_len, bool try_flush) {
+        auto buffer = std::make_shared<MBuffer>();
+        buffer->copyIn(buf);
+        return send(buffer, addr, addr_len, try_flush);
+    }
+
+    ssize_t Socket::send(MBuffer::ptr buf, struct sockaddr *addr, socklen_t addr_len, bool try_flush) {
+        return send_l(buf, try_flush);
+    }
+
+    void Socket::setOnWritten(onWrittenCB cb) {
         LOCK_GUARD(m_event_cb_mutex);
         if (cb) {
             m_on_written_cb = std::move(cb);
