@@ -39,6 +39,7 @@ namespace hammer {
             return onBeforeAcceptConnection(poller);
         });
         m_socket->setOnAccept([this](Socket::ptr &sock, std::shared_ptr<void>& complete) {
+            HAMMER_LOG_DEBUG(g_logger) << "onAccept: " << sock->getFD();
             auto poller = sock->getPoller().get();
             auto server = getServer(poller);
             poller->async([server, sock, complete]() {
@@ -62,10 +63,10 @@ namespace hammer {
         auto sock_ptr = sock.get();
         auto success = m_tcp_conns.emplace(sock_ptr, sock).second;
         HAMMER_ASSERT(success = true);
+        HAMMER_LOG_DEBUG(g_logger) << "insert fd: " << sock->getFD() <<  " into tree";
 
         //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
         sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
-            //HAMMER_LOG_WARN(g_logger) << "defaultReadCB, MBuffer len: " << buf->readAvailable();
             if (buf->readAvailable()) {
                 buf->clear();
             }
@@ -82,7 +83,16 @@ namespace hammer {
             }
             strong_sock->send(resp);
         });
-        sock->setOnWritten(m_on_written_socket == nullptr ? defaultWrittenCB : m_on_written_socket);
+        sock->setOnWritten([weak_self, sock_ptr]()->bool {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return false;
+            }
+            HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
+            HAMMER_LOG_DEBUG(g_logger) << "onWritten erase fd: " << sock_ptr->getFD();
+            strong_self->m_tcp_conns.erase(sock_ptr);
+            return true;
+        });
         sock->setOnErr([weak_self, weak_sock, sock_ptr](const SocketException &e) {
             OnceToken token(nullptr, [&]() {
                 auto strong_self = weak_self.lock();
@@ -90,13 +100,15 @@ namespace hammer {
                     return;
                 }
                 HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
+                HAMMER_LOG_WARN(g_logger) << "onErr erase fd: " << sock_ptr->getFD();
                 strong_self->m_tcp_conns.erase(sock_ptr);
-                //HAMMER_LOG_WARN(g_logger) << "onErr erase sock_ptr";
             });
+            /*
             auto sock = weak_sock.lock();
             if (sock) {
                 //sock->
             }
+            */
         });
         return;
     }

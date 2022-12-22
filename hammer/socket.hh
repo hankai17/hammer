@@ -128,18 +128,22 @@ namespace hammer {
         uint16_t getLocalPort();
         std::string getPeerIP();
         uint16_t getPeerPort();
+        int getFD() { if (m_fd) return m_fd->getFD();  return -1; }
 
         bool emitErr(const SocketException &err) noexcept;
         void enableRead(const SocketFD::ptr &sock);     // default enable in attachEvent. Never use xxRead !
         void disableRead(const SocketFD::ptr &sock);    // Because we(upper) always enable read Unless a DONE sig
         void enableWrite(const SocketFD::ptr &sock);
         void disableWrite(const SocketFD::ptr &sock);
+
+        void setReadTriggered(bool triggered) { m_read_triggered = triggered; }
+        void setWriteTriggered(bool triggered) { m_write_triggered = triggered; }
         bool isReadTriggered() const { return m_read_triggered; }
         bool isWriteTriggered() const { return m_write_triggered; }
 
         ssize_t onRead(const SocketFD::ptr &sock, bool is_udp) noexcept;
         void onWritten(const SocketFD::ptr &sock);
-        bool writeData(const SocketFD::ptr &sock, bool poller_thead);
+        bool writeData(const SocketFD::ptr &sock);
         void onWrite(const SocketFD::ptr &sock);
 
         bool attachEvent(const SocketFD::ptr &sock);
@@ -152,10 +156,10 @@ namespace hammer {
         void connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
                 const std::string &local_ip, uint16_t local_port);
         int flushAll();
-        ssize_t send_l(MBuffer::ptr buf, bool try_flush);
-        ssize_t send(const char *buf, size_t size = 0, struct sockaddr *addr = nullptr, socklen_t addr_len = 0, bool try_flush = true);
-        ssize_t send(std::string buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0, bool try_flush = true);
-        ssize_t send(MBuffer::ptr buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0, bool try_flush = true);
+        ssize_t send_l(MBuffer::ptr buf);
+        ssize_t send(const char *buf, size_t size = 0, struct sockaddr *addr = nullptr, socklen_t addr_len = 0);
+        ssize_t send(std::string buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0);
+        ssize_t send(MBuffer::ptr buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0);
 
         //////
         EventPoller::ptr getPoller() const { return m_poller; }

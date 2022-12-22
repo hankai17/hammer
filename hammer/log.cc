@@ -263,7 +263,7 @@ namespace hammer {
         if (level >= m_level) {
             std::lock_guard<std::mutex> lock(m_mutex);
             for (auto&i : m_appenders) {
-                i->log(shared_from_this(), level, event);
+                i->log(shared_from_this(), event->getLevel(), event);
             }
         }
     }
@@ -389,7 +389,8 @@ namespace hammer {
         GetMap()[m_root->getName()] = m_root;
 
         m_system.reset(new Logger("system"));
-        m_system->addAppender(LogAppender::ptr(new StdoutLogAppender));
+        //m_system->addAppender(LogAppender::ptr(new FileLogAppender("./1.log")));
+        m_system->addAppender(LogAppender::ptr(new  StdoutLogAppender));
         GetMap()[m_system->getName()] = m_system;
     }
 
