@@ -76,8 +76,26 @@ int buffer_test()
     return 0;
 }
 
+int buffer_test1()
+{
+/*
+    hammer::MBuffer::SegmentData data(32 * 1024);
+    HAMMER_LOG_WARN(g_root_logger) << "data getLength: " << data.getLength();
+    hammer::MBuffer::SegmentData new_data = data.slice(0, 1024);
+    HAMMER_LOG_WARN(g_root_logger) << "new_data getLength: " << new_data.getLength();
+*/
+
+    hammer::MBuffer::ptr buffer = std::make_shared<hammer::MBuffer>();
+    HAMMER_LOG_WARN(g_root_logger) << "readAv: " << buffer->readAvailable()
+                                   << ", writeAv: " << buffer->writeAvailable();
+    buffer->writeBuffers(32 * 1024);
+    HAMMER_LOG_WARN(g_root_logger) << "readAv: " << buffer->readAvailable()
+                                   << ", writeAv: " << buffer->writeAvailable();
+    return 0;
+}
+
 int main()
 {
-    task_test();
+    buffer_test1();
     return 0;
 }

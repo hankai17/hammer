@@ -69,10 +69,7 @@ namespace hammer {
     public:
         using ptr = std::shared_ptr<SocketNO>;
         SocketNO(int fd) : m_fd(fd) {}
-        ~SocketNO() {
-            ::shutdown(m_fd, SHUT_RDWR);
-            close(m_fd);
-        }
+        ~SocketNO();
         int getFD() const { return m_fd; }
     private:
         int         m_fd;

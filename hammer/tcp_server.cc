@@ -63,8 +63,8 @@ namespace hammer {
         auto sock_ptr = sock.get();
         auto success = m_tcp_conns.emplace(sock_ptr, sock).second;
         HAMMER_ASSERT(success = true);
-        HAMMER_LOG_DEBUG(g_logger) << "insert fd: " << sock->getFD() <<  " into tree";
 
+        HAMMER_LOG_DEBUG(g_logger) << "1onAcceptConnection setCB: " << sock->getFD();
         //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
         sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
             if (buf->readAvailable()) {
@@ -100,7 +100,6 @@ namespace hammer {
                     return;
                 }
                 HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
-                HAMMER_LOG_WARN(g_logger) << "onErr erase fd: " << sock_ptr->getFD();
                 strong_self->m_tcp_conns.erase(sock_ptr);
             });
             /*

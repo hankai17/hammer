@@ -38,6 +38,12 @@ namespace hammer {
         return toSocketException(error);
     }
 
+    SocketNO::~SocketNO() {
+        ::shutdown(m_fd, SHUT_RDWR);
+        HAMMER_LOG_WARN(g_logger) << "close SocketNO fd: " << m_fd;
+        close(m_fd);
+    }
+
     Socket::Socket(const EventPoller::ptr poller, bool enable_mutex)
             : m_poller(poller), m_socketFD_mutex(enable_mutex),
             m_event_cb_mutex(enable_mutex),
@@ -55,6 +61,9 @@ namespace hammer {
         m_conn_cb = nullptr;
 
         LOCK_GUARD(m_socketFD_mutex);
+        if (m_fd) {
+            HAMMER_LOG_WARN(g_logger) << "closeSocket fd: " << m_fd->getFD();
+        }
         m_fd = nullptr;
     }
 
@@ -68,6 +77,7 @@ namespace hammer {
 
     SocketFD::ptr Socket::setSocketFD(int fd) {
         closeSocket();
+        HAMMER_LOG_WARN(g_logger) << "createSocket setSocketFD fd: " << fd;
         auto socket = std::make_shared<SocketFD>(fd, SocketFD::SocketType::TCP, m_poller);
         LOCK_GUARD(m_socketFD_mutex);
         m_fd = socket;
@@ -357,13 +367,13 @@ namespace hammer {
         m_read_buffer = m_poller->getSharedBuffer();
         auto is_udp = sock->getType() == SocketFD::SocketType::UDP;
         int fd = sock->getFD();
-        HAMMER_LOG_DEBUG(g_logger) << "attachEvent socket: " << fd;
         int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR,
                 [weak_self, weak_sock, is_udp, fd](int event) {
             auto strong_self = weak_self.lock();
             auto strong_sock = weak_sock.lock();
             if (!strong_self || !strong_sock) {
                 if (strong_self == nullptr && strong_sock == nullptr) {
+                    HAMMER_ASSERT(0);
                     HAMMER_LOG_WARN(g_logger) << "attachEvent both nullptr fd: " << fd;
                 } else {
                     if (strong_self == nullptr) {
@@ -386,6 +396,8 @@ namespace hammer {
                 strong_self->onWrite(strong_sock);
             }
             if (event & EventPoller::Event::ERROR) {
+                strong_self->setReadTriggered(true);
+                strong_self->setWriteTriggered(true);
                 HAMMER_LOG_WARN(g_logger) << "attachEvent socket onErr: " << strong_sock->getFD();
                 strong_self->emitErr(getSocketError(strong_sock));
             }
@@ -452,7 +464,7 @@ namespace hammer {
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
                     new_sock = m_on_before_accept_cb(m_poller);
-                } catch (std::exception &e) {   
+                } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when on_before_accept: " << e.what();
                     close(fd);
                     continue;
@@ -463,6 +475,7 @@ namespace hammer {
                 auto new_sock_fd = new_sock->setSocketFD(fd);
                 std::shared_ptr<void> completed(nullptr, [new_sock, new_sock_fd](void *) {
                     try {
+                        HAMMER_LOG_DEBUG(g_logger) << "2insert fd: " << new_sock_fd->getFD() <<  " into tree";
                         if (!new_sock->attachEvent(new_sock_fd)) {
                             new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
                         }
