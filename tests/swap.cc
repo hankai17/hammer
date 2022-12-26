@@ -1,5 +1,6 @@
 #include<iostream>
 #include<memory>
+#include <unordered_map>
 #include<functional>
 #include<list>
 #include<unistd.h>
@@ -112,12 +113,32 @@ void main5()
     sleep(2);
 }
 
+class TcpSer {
+public:
+    using ptr = std::shared_ptr<TcpSer>;
+    TcpSer(int x) { m_a = x; }
+private:
+    int m_a = 0;
+};
+
+std::unordered_map<TcpSer *, TcpSer::ptr> g_conns;
+
+void main6()
+{
+    TcpSer::ptr c = std::make_shared<TcpSer>(1);
+    std::cout << "before emplace, count: " << c.use_count() << std::endl;
+    auto ret = g_conns.emplace(c.get(), c);
+    std::cout << "ret.sec: " << ret.second << std::endl; 
+    std::cout << "after emplace, count: " << c.use_count() << std::endl;
+    return;
+}
+
 int main()
 {
-    //main3();
 
     //auto fun = main4();
     //fun();
-    main5();
+    //main5();
+    main6();
     return 0;
 }
