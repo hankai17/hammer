@@ -54,7 +54,8 @@ namespace hammer {
 
     Socket::ptr TcpServer::onBeforeAcceptConnection(const EventPoller::ptr &poller) {
         HAMMER_ASSERT(poller->isCurrentThread());
-        return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
+        return nullptr;
+        //return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {

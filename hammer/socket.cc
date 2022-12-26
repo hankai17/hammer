@@ -68,6 +68,9 @@ namespace hammer {
     }
 
     Socket::~Socket() {
+        if (!m_poller->isCurrentThread()) {
+            HAMMER_LOG_WARN(g_logger) << "~Socket in other thread";
+        }
         closeSocket();
     }
 
@@ -475,7 +478,6 @@ namespace hammer {
                 auto new_sock_fd = new_sock->setSocketFD(fd);
                 std::shared_ptr<void> completed(nullptr, [new_sock, new_sock_fd](void *) {
                     try {
-                        HAMMER_LOG_DEBUG(g_logger) << "2insert fd: " << new_sock_fd->getFD() <<  " into tree";
                         if (!new_sock->attachEvent(new_sock_fd)) {
                             new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
                         }

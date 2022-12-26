@@ -104,6 +104,7 @@ namespace hammer {
 		    epoll_event ev = {0};
             ev.events = toEpollEvent(event);
             ev.data.fd = fd;
+            HAMMER_LOG_DEBUG(g_logger) << "2insert fd: " << fd <<  " into tree";
             int ret = epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, fd, &ev);
             if (ret == 0) {
                 m_event_map.emplace(fd, std::make_shared<PollEventCB>(std::move(cb)));
