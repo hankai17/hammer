@@ -54,8 +54,8 @@ namespace hammer {
 
     Socket::ptr TcpServer::onBeforeAcceptConnection(const EventPoller::ptr &poller) {
         HAMMER_ASSERT(poller->isCurrentThread());
-        return nullptr;
-        //return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
+        //return nullptr;
+        return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {
@@ -64,8 +64,10 @@ namespace hammer {
         auto sock_ptr = sock.get();
         auto success = m_tcp_conns.emplace(sock_ptr, sock).second;
         HAMMER_ASSERT(success = true);
+        HAMMER_ASSERT(m_poller->isCurrentThread());
 
-        HAMMER_LOG_DEBUG(g_logger) << "1onAcceptConnection setCB: " << sock->getFD();
+        HAMMER_LOG_DEBUG(g_logger) << "1onAcceptConnection setCB: " << sock->getFD() << ", emplace: " << sock_ptr;
+        HAMMER_LOG_DEBUG(g_logger) << "onAcceptConnection: " << toString();
         //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
         sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
             if (buf->readAvailable()) {
@@ -92,6 +94,7 @@ namespace hammer {
             HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
             HAMMER_LOG_DEBUG(g_logger) << "onWritten erase fd: " << sock_ptr->getFD();
             strong_self->m_tcp_conns.erase(sock_ptr);
+            HAMMER_LOG_DEBUG(g_logger) << "after onWritten erase, " << strong_self->toString();
             return true;
         });
         sock->setOnErr([weak_self, weak_sock, sock_ptr](const SocketException &e) {
@@ -101,7 +104,9 @@ namespace hammer {
                     return;
                 }
                 HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
+                HAMMER_LOG_DEBUG(g_logger) << "onErr erase fd: " << sock_ptr->getFD();
                 strong_self->m_tcp_conns.erase(sock_ptr);
+                HAMMER_LOG_DEBUG(g_logger) << "after onErr erase, " << strong_self->toString();
             });
             /*
             auto sock = weak_sock.lock();
@@ -136,7 +141,7 @@ namespace hammer {
     }
 
     TcpServer::~TcpServer() {
-
+        HAMMER_ASSERT(0);
     }
 
     void TcpServer::inactivityCop() {
@@ -155,6 +160,17 @@ namespace hammer {
         }
         return std::static_pointer_cast<TcpServer>(m_parent ? const_cast<TcpServer*>(m_parent)->shared_from_this() :
                                               const_cast<TcpServer*>(this)->shared_from_this());
+    }
+
+    std::string TcpServer::toString() {
+        std::stringstream ss;
+        for (auto &it : m_tcp_conns) {
+            ss << "<fd: " << it.second->getFD()
+               << ", use_count: " << it.second.use_count() 
+               << ", addr: " << it.second.get() << ", addrf: " << it.first
+               << ">, ";
+        }
+        return ss.str();
     }
 
     void TcpServer::start(uint16_t port, const std::string &host, uint32_t backlog) {

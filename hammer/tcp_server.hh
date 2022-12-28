@@ -37,6 +37,7 @@ namespace hammer {
         Socket::ptr createSocket(const EventPoller::ptr &poller);
         void inactivityCop();
         ptr getServer(const EventPoller *poller) const;
+        std::string toString();
     private:
         EventPoller::ptr    m_poller = nullptr;
         Socket::ptr         m_socket = nullptr;

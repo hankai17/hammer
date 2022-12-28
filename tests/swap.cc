@@ -133,12 +133,36 @@ void main6()
     return;
 }
 
+std::weak_ptr<int> g_w;
+
+void observe()
+{
+    std::cout << "g_w.use_count(): " << g_w.use_count() << std::endl;
+    if (std::shared_ptr<int> sp = g_w.lock()) {
+        std::cout << "*sp: " << *sp << std::endl;
+    } else {
+        std::cout << "g_w is expired, owner_before: " << g_w.owner_before(g_w) << std::endl;
+    }
+}
+
+void main7()
+{
+    {
+        auto sp = std::make_shared<int>(42);
+        g_w = sp;
+        std::cout << "owner_before: " << sp.owner_before(g_w) << std::endl;
+        observe();
+    }
+    observe();
+}
+
 int main()
 {
 
     //auto fun = main4();
     //fun();
     //main5();
-    main6();
+    //main6();
+    main7();
     return 0;
 }

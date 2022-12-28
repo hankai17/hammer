@@ -70,6 +70,8 @@ namespace hammer {
     Socket::~Socket() {
         if (!m_poller->isCurrentThread()) {
             HAMMER_LOG_WARN(g_logger) << "~Socket in other thread";
+        } else {
+            HAMMER_LOG_WARN(g_logger) << "~Socket in local thread";
         }
         closeSocket();
     }
@@ -364,20 +366,22 @@ namespace hammer {
     }
 
     bool Socket::attachEvent(const SocketFD::ptr &sock) {
-        std::weak_ptr<Socket> weak_self = shared_from_this();
+        //std::weak_ptr<Socket> weak_self = shared_from_this();
+        std::weak_ptr<Socket> weak_self = std::dynamic_pointer_cast<Socket>(shared_from_this());
         std::weak_ptr<SocketFD> weak_sock = sock;
         m_read_enable = true;
         m_read_buffer = m_poller->getSharedBuffer();
         auto is_udp = sock->getType() == SocketFD::SocketType::UDP;
         int fd = sock->getFD();
+        Socket *sock_addr = this;
         int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR,
-                [weak_self, weak_sock, is_udp, fd](int event) {
+                [weak_self, weak_sock, is_udp, fd, sock_addr](int event) {
             auto strong_self = weak_self.lock();
             auto strong_sock = weak_sock.lock();
             if (!strong_self || !strong_sock) {
                 if (strong_self == nullptr && strong_sock == nullptr) {
-                    HAMMER_ASSERT(0);
-                    HAMMER_LOG_WARN(g_logger) << "attachEvent both nullptr fd: " << fd;
+                    HAMMER_LOG_WARN(g_logger) << "attachEvent both nullptr fd: " << fd << ", sock_addr: " << sock_addr;
+                    //HAMMER_ASSERT(0);
                 } else {
                     if (strong_self == nullptr) {
                         HAMMER_LOG_WARN(g_logger) << "attachEvent strong_self nullptr fd: " << fd;
@@ -481,6 +485,9 @@ namespace hammer {
                         if (!new_sock->attachEvent(new_sock_fd)) {
                             new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
                         }
+                        HAMMER_LOG_WARN(g_logger) << "begin sleep 5";
+                        usleep(1000 * 5); // 5s // 2. complete在accept线程析构时 花费了5s钟 而这5s内socket业务已在其它线程跑完 所以socket/socketFD也在accept线程析构(跨线程析构)
+                        HAMMER_LOG_WARN(g_logger) << "after sleep 5";
                     } catch (std::exception &e) {
                         HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
                     }
@@ -488,6 +495,7 @@ namespace hammer {
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
                     m_on_accept_cb(new_sock, completed);
+                    usleep(1000 * 5); // 1s // 1.确保complete在 accept线程析构
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
                     continue;
