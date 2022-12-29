@@ -42,9 +42,12 @@ namespace hammer {
             HAMMER_LOG_DEBUG(g_logger) << "onAccept: " << sock->getFD();
             auto poller = sock->getPoller().get();
             auto server = getServer(poller);
-            poller->async([server, sock, complete]() {
-                server->onAcceptConnection(sock);
+            Socket::ptr tmp_sock;
+            tmp_sock.swap(sock);
+            poller->async([server, tmp_sock, complete=std::forward<std::shared_ptr<void>>(complete)]() {
+                server->onAcceptConnection(tmp_sock);
             });
+            // sleep(1) // 这里是在accept线程中调用的 如果用swap的方式: 这个地方accept线程中仍持有socket(tmp_sock)引用 
         });
     }
 

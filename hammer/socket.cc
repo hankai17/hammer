@@ -381,7 +381,7 @@ namespace hammer {
             if (!strong_self || !strong_sock) {
                 if (strong_self == nullptr && strong_sock == nullptr) {
                     HAMMER_LOG_WARN(g_logger) << "attachEvent both nullptr fd: " << fd << ", sock_addr: " << sock_addr;
-                    //HAMMER_ASSERT(0);
+                    HAMMER_ASSERT(0);
                 } else {
                     if (strong_self == nullptr) {
                         HAMMER_LOG_WARN(g_logger) << "attachEvent strong_self nullptr fd: " << fd;
@@ -467,6 +467,7 @@ namespace hammer {
                 SocketOps::setRecvBuf(fd);
                 SocketOps::setCloseWait(fd);
                 SocketOps::setCloExec(fd);
+
                 Socket::ptr new_sock;
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
@@ -479,10 +480,10 @@ namespace hammer {
                 if (!new_sock) {
                     new_sock = Socket::createSocket(m_poller, false);
                 }
-                auto new_sock_fd = new_sock->setSocketFD(fd);
-                std::shared_ptr<void> completed(nullptr, [new_sock, new_sock_fd](void *) {
+                new_sock->setSocketFD(fd);
+                std::shared_ptr<void> completed(nullptr, [new_sock](void *) {
                     try {
-                        if (!new_sock->attachEvent(new_sock_fd)) {
+                        if (!new_sock->attachEvent(new_sock->getSockFD())) {
                             new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
                         }
                         HAMMER_LOG_WARN(g_logger) << "begin sleep 5";
@@ -495,7 +496,7 @@ namespace hammer {
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
                     m_on_accept_cb(new_sock, completed);
-                    usleep(1000 * 5); // 1s // 1.确保complete在 accept线程析构
+                    usleep(1000 * 5); // 1s // 1.确保complete在 accept线程析构       // 如果complete在 绑定的线程析构就不会有1/2问题
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
                     continue;

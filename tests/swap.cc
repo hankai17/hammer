@@ -117,6 +117,7 @@ class TcpSer {
 public:
     using ptr = std::shared_ptr<TcpSer>;
     TcpSer(int x) { m_a = x; }
+    ~TcpSer() { std::cout << "~TcpSer" << std::endl; }
 private:
     int m_a = 0;
 };
@@ -158,11 +159,6 @@ void main7()
 
 int main()
 {
-
     //auto fun = main4();
-    //fun();
-    //main5();
-    //main6();
-    main7();
     return 0;
 }

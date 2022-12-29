@@ -162,6 +162,7 @@ namespace hammer {
         EventPoller::ptr getPoller() const { return m_poller; }
         MutexWrapper<std::recursive_mutex> &getFdMutex() const { return m_socketFD_mutex; }
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
+        SocketFD::ptr getSockFD() const { return m_fd; }
         const onErrCB &getErrCB() { return m_on_err_cb; }
         void setOnWritten(onWrittenCB cb);
         void setOnBeforeAccept(onCreateSocketCB cb);
