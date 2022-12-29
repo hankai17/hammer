@@ -1,0 +1,35 @@
+/*
+分配socket并绑定某个线程
+schedule(socket) {
+    Task(socket) {
+        swap(socket)
+    } task;
+    socket已经不可能在本线程析构了
+    task_list.push_back(task);
+}
+*/
+Socket::ptr new_sock = nullptr;
+try {
+    LOCK_GUARD(m_event_cb_mutex);
+    new_sock = m_on_before_accept_cb(m_poller);
+} catch (std::exception &e) {
+    HAMMER_LOG_WARN(g_logger) << "Exception occurred when on_before_accept: " << e.what();
+    close(fd);
+    continue;
+}
+if (!new_sock) {
+    new_sock = Socket::createSocket(m_poller, false);
+}
+
+//std::shared_ptr<void> async_accept(nullptr, [new_sock, new_sock_fd](void *) {
+auto async_accept = []() {
+    auto new_sock_fd = new_sock->setSocketFD(fd);
+    completed();
+    try {
+        LOCK_GUARD(m_event_cb_mutex);
+        m_on_accept_cb(new_sock, completed);
+    } catch (std::exception &e) {
+        HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
+        continue;
+    }
+}
