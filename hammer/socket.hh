@@ -111,7 +111,7 @@ namespace hammer {
         using ConnCB = std::function<void(int)>;
         using onErrCB = std::function<void(const SocketException &)>;
         using onReadCB = std::function<void(const MBuffer::ptr &, struct sockaddr *, int addr_len)>;
-        using onAcceptCB = std::function<void(Socket::ptr &, std::shared_ptr<void> &)>;
+        using onAcceptCB = std::function<void(Socket::ptr &)>;
         using onWrittenCB = std::function<bool()>;
         using onCreateSocketCB = std::function<ptr(const EventPoller::ptr &)>;
 

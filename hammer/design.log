@@ -33,3 +33,11 @@ auto async_accept = []() {
         continue;
     }
 }
+
+
+
+m_on_accept_cb(new_sock, completed); 中
+如果只将completed"断舍离" 而new_sock没有"断舍离" 那么仍会有new_sock在accept线程析构的可能
+必须将accept线程中 所有的关于socket的引用都"断舍离"
+---注意这里的"断舍离"意思是 lambda捕获表达式的那种(boost源码中见到的c++14)
+

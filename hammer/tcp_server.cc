@@ -38,16 +38,25 @@ namespace hammer {
         m_socket->setOnBeforeAccept([this](const EventPoller::ptr &poller) {
             return onBeforeAcceptConnection(poller);
         });
-        m_socket->setOnAccept([this](Socket::ptr &sock, std::shared_ptr<void>& complete) {
-            HAMMER_LOG_DEBUG(g_logger) << "onAccept: " << sock->getFD();
+        m_socket->setOnAccept([this](Socket::ptr &sock) {
+            int fd = sock->getFD();
+            HAMMER_LOG_DEBUG(g_logger) << "onAccept: " << fd;
             auto poller = sock->getPoller().get();
             auto server = getServer(poller);
-            Socket::ptr tmp_sock;
-            tmp_sock.swap(sock);
-            poller->async([server, tmp_sock, complete=std::forward<std::shared_ptr<void>>(complete)]() {
-                server->onAcceptConnection(tmp_sock);
+            //poller->async([server, sock=std::forward<Socket::ptr>(sock)]() 
+            poller->async([server, sock=std::move(sock)]() {
+                server->onAcceptConnection(sock);
+                /*
+                try {
+                    if (!sock->attachEvent(sock->getSockFD())) {
+                        sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
+                    }
+                } catch (std::exception &e) {
+                    HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
+                }
+                 */
             });
-            // sleep(1) // 这里是在accept线程中调用的 如果用swap的方式: 这个地方accept线程中仍持有socket(tmp_sock)引用 
+            //HAMMER_LOG_WARN(g_logger) << "onAccept: after poller->aync: " << fd;
         });
     }
 
@@ -62,6 +71,8 @@ namespace hammer {
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {
+        HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
+        return;
         std::weak_ptr<TcpServer> weak_self = std::dynamic_pointer_cast<TcpServer>(shared_from_this());
         std::weak_ptr<Socket> weak_sock = sock;
         auto sock_ptr = sock.get();
@@ -69,8 +80,8 @@ namespace hammer {
         HAMMER_ASSERT(success = true);
         HAMMER_ASSERT(m_poller->isCurrentThread());
 
-        HAMMER_LOG_DEBUG(g_logger) << "1onAcceptConnection setCB: " << sock->getFD() << ", emplace: " << sock_ptr;
-        HAMMER_LOG_DEBUG(g_logger) << "onAcceptConnection: " << toString();
+        HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
+        //HAMMER_LOG_DEBUG(g_logger) << "onAcceptConnection: " << toString();
         //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
         sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
             if (buf->readAvailable()) {
@@ -95,7 +106,7 @@ namespace hammer {
                 return false;
             }
             HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
-            HAMMER_LOG_DEBUG(g_logger) << "onWritten erase fd: " << sock_ptr->getFD();
+            //HAMMER_LOG_WARN(g_logger) << "onWritten erase fd: " << sock_ptr->getFD();
             strong_self->m_tcp_conns.erase(sock_ptr);
             HAMMER_LOG_DEBUG(g_logger) << "after onWritten erase, " << strong_self->toString();
             return true;
@@ -107,7 +118,7 @@ namespace hammer {
                     return;
                 }
                 HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
-                HAMMER_LOG_DEBUG(g_logger) << "onErr erase fd: " << sock_ptr->getFD();
+                //HAMMER_LOG_WARN(g_logger) << "onErr erase fd: " << sock_ptr->getFD();
                 strong_self->m_tcp_conns.erase(sock_ptr);
                 HAMMER_LOG_DEBUG(g_logger) << "after onErr erase, " << strong_self->toString();
             });
@@ -167,12 +178,14 @@ namespace hammer {
 
     std::string TcpServer::toString() {
         std::stringstream ss;
+#if 0
         for (auto &it : m_tcp_conns) {
             ss << "<fd: " << it.second->getFD()
                << ", use_count: " << it.second.use_count() 
                << ", addr: " << it.second.get() << ", addrf: " << it.first
                << ">, ";
         }
+#endif
         return ss.str();
     }
 

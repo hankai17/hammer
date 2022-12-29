@@ -62,16 +62,22 @@ namespace hammer {
 
         LOCK_GUARD(m_socketFD_mutex);
         if (m_fd) {
-            HAMMER_LOG_WARN(g_logger) << "closeSocket fd: " << m_fd->getFD();
+            HAMMER_LOG_DEBUG(g_logger) << "closeSocket fd: " << m_fd->getFD();
         }
         m_fd = nullptr;
     }
 
     Socket::~Socket() {
         if (!m_poller->isCurrentThread()) {
-            HAMMER_LOG_WARN(g_logger) << "~Socket in other thread";
+            if (m_fd) {
+                HAMMER_LOG_WARN(g_logger) << "~Socket fd: " << m_fd->getFD() << " in other thread";
+            } else {
+                HAMMER_LOG_WARN(g_logger) << "~Socket in other thread";
+            }
+            sleep(5);
+            HAMMER_ASSERT(0);
         } else {
-            HAMMER_LOG_WARN(g_logger) << "~Socket in local thread";
+            HAMMER_LOG_DEBUG(g_logger) << "~Socket in local thread";
         }
         closeSocket();
     }
@@ -381,6 +387,7 @@ namespace hammer {
             if (!strong_self || !strong_sock) {
                 if (strong_self == nullptr && strong_sock == nullptr) {
                     HAMMER_LOG_WARN(g_logger) << "attachEvent both nullptr fd: " << fd << ", sock_addr: " << sock_addr;
+                    sleep(5);
                     HAMMER_ASSERT(0);
                 } else {
                     if (strong_self == nullptr) {
@@ -481,22 +488,10 @@ namespace hammer {
                     new_sock = Socket::createSocket(m_poller, false);
                 }
                 new_sock->setSocketFD(fd);
-                std::shared_ptr<void> completed(nullptr, [new_sock](void *) {
-                    try {
-                        if (!new_sock->attachEvent(new_sock->getSockFD())) {
-                            new_sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
-                        }
-                        HAMMER_LOG_WARN(g_logger) << "begin sleep 5";
-                        usleep(1000 * 5); // 5s // 2. complete在accept线程析构时 花费了5s钟 而这5s内socket业务已在其它线程跑完 所以socket/socketFD也在accept线程析构(跨线程析构)
-                        HAMMER_LOG_WARN(g_logger) << "after sleep 5";
-                    } catch (std::exception &e) {
-                        HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
-                    }
-                });
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
-                    m_on_accept_cb(new_sock, completed);
-                    usleep(1000 * 5); // 1s // 1.确保complete在 accept线程析构       // 如果complete在 绑定的线程析构就不会有1/2问题
+                    m_on_accept_cb(new_sock);
+                    //usleep(1000 * 1);
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
                     continue;
@@ -671,7 +666,7 @@ namespace hammer {
         if (cb) {
             m_on_accept_cb = std::move(cb);
         } else {
-            m_on_accept_cb = [](Socket::ptr &sock, std::shared_ptr<void> &complete) {
+            m_on_accept_cb = [](Socket::ptr &sock) {
                 HAMMER_LOG_WARN(g_logger) << "Socket not set accept cb";
             };
         }
