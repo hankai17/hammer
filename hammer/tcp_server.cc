@@ -43,8 +43,13 @@ namespace hammer {
             HAMMER_LOG_DEBUG(g_logger) << "onAccept: " << fd;
             auto poller = sock->getPoller().get();
             auto server = getServer(poller);
-            //poller->async([server, sock=std::forward<Socket::ptr>(sock)]() 
-            poller->async([server, sock=std::move(sock)]() {
+            //poller->async([server, sock]() { // sock use_count == 2 if sleep after m_on_accept_cb
+            //poller->async([server, sock=std::forward<Socket::ptr>(sock)]()
+            poller->async([server, sock=std::move(sock)]() { // 为什么task会在 accept线程析构?
+                                                             // 看在async中 auto ret = std::make_shared<Task>(std::move(task));
+                                                             // 这个make_shared 等于仍是在本accept线程中 分配task对象
+                                                             // 往下看 它把这个对象扔到队列里然后通知 这里假设扔到了poller2中 且poller2非常快的返回 
+                                                             // 快到async还没来得及返回 即task对象将在async里析构 然后task里包得sock也在async之后析构 即在accept线程中析构了
                 server->onAcceptConnection(sock);
                 /*
                 try {
@@ -56,7 +61,7 @@ namespace hammer {
                 }
                  */
             });
-            //HAMMER_LOG_WARN(g_logger) << "onAccept: after poller->aync: " << fd;
+            HAMMER_LOG_WARN(g_logger) << "onAccept: after poller->aync: " << fd;
         });
     }
 

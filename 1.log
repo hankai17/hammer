@@ -1,0 +1,83 @@
+// 正常得
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:91	createSocket setSocketFD fd: 13
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:60	onAccept: after poller->aync: 13
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:90	before onPipeEvent list for_each
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:75	1onAcceptConnection setCB: 13
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:100	after onPipeEvent list for_each
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:43	close SocketNO fd: 13
+
+// 正常的
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:91	createSocket setSocketFD fd: 13
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:60	onAccept: after poller->aync: 13
+2022-12-30 02:28:22	109955	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:90	before onPipeEvent list for_each
+2022-12-30 02:28:22	109955	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:75	1onAcceptConnection setCB: 13
+2022-12-30 02:28:22	109955	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:100	after onPipeEvent list for_each
+2022-12-30 02:28:22	109955	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:43	close SocketNO fd: 13
+
+// 正常的
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:91	createSocket setSocketFD fd: 13
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:60	onAccept: after poller->aync: 13 // 说明很快析构了
+2022-12-30 02:28:22	109956	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:90	before onPipeEvent list for_each
+2022-12-30 02:28:22	109956	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:75	1onAcceptConnection setCB: 13
+2022-12-30 02:28:22	109956	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:100	after onPipeEvent list for_each
+2022-12-30 02:28:22	109956	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:43	close SocketNO fd: 13
+
+// 本线程 暂不分析
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:91	createSocket setSocketFD fd: 13
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:75	1onAcceptConnection setCB: 13
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:43	close SocketNO fd: 13
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:60	onAccept: after poller->aync: 13
+
+// tcp_server.cc:60没有打印 证明accept线程可能卡了一下 于是在accept线程析构
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:91	createSocket setSocketFD fd: 13
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:90	before onPipeEvent list for_each
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:75	1onAcceptConnection setCB: 13
+2022-12-30 02:28:22	109958	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/event_poller.cc:100	after onPipeEvent list for_each
+2022-12-30 02:28:22	109957	0	[WARN]	[system]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:73	~Socket fd: 13 in other thread
+2-30 02:28:27	109957	0	[ERROR]	[root]	/root/CLionProjects/local_git/hammer/hammer/socket.cc:78	ASSERTION: 0
+backtrace:
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(hammer::Socket::~Socket()+0x3ed) [0x7f4367f850bd]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void __gnu_cxx::new_allocator<hammer::Socket>::destroy<hammer::Socket>(hammer::Socket*)+0x1c) [0x7f4367f95388]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void std::allocator_traits<std::allocator<hammer::Socket> >::destroy<hammer::Socket>(std::allocator<hammer::Socket>&, hammer::Socket*)+0x23) [0x7f4367f952bf]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::_Sp_counted_ptr_inplace<hammer::Socket, std::allocator<hammer::Socket>, (__gnu_cxx::_Lock_policy)2>::_M_dispose()+0x37) [0x7f4367f94fbb]
+    ./event_poller(std::_Sp_counted_base<(__gnu_cxx::_Lock_policy)2>::_M_release()+0x42) [0x410294]
+    ./event_poller(std::__shared_count<(__gnu_cxx::_Lock_policy)2>::~__shared_count()+0x27) [0x40f9b5]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::__shared_ptr<hammer::Socket, (__gnu_cxx::_Lock_policy)2>::~__shared_ptr()+0x1c) [0x7f4367f8f28e]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::shared_ptr<hammer::Socket>::~shared_ptr()+0x18) [0x7f4367f8f2aa]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0x10ba10) [0x7f4367f95a10]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0x10f86d) [0x7f4367f9986d]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0x10ed36) [0x7f4367f98d36]
+    ./event_poller(std::_Function_base::~_Function_base()+0x33) [0x40f2f7]
+    ./event_poller(std::function<void ()>::~function()+0x18) [0x40f312]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void __gnu_cxx::new_allocator<std::function<void ()> >::destroy<std::function<void ()> >(std::function<void ()>*)+0x1c) [0x7f4367f67722]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void std::allocator_traits<std::allocator<std::function<void ()> > >::destroy<std::function<void ()> >(std::allocator<std::function<void ()> >&, std::function<void ()>*)+0x23) [0x7f4367f675ad]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::_Sp_counted_ptr_inplace<std::function<void ()>, std::allocator<std::function<void ()> >, (__gnu_cxx::_Lock_policy)2>::_M_dispose()+0x37) [0x7f4367f66d8d]
+    ./event_poller(std::_Sp_counted_base<(__gnu_cxx::_Lock_policy)2>::_M_release()+0x42) [0x410294]
+    ./event_poller(std::__shared_count<(__gnu_cxx::_Lock_policy)2>::~__shared_count()+0x27) [0x40f9b5]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::__shared_ptr<std::function<void ()>, (__gnu_cxx::_Lock_policy)2>::~__shared_ptr()+0x1c) [0x7f4367f5d28a]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::shared_ptr<std::function<void ()> >::~shared_ptr()+0x18) [0x7f4367f5d2a6]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(hammer::TaskImp<void ()>::~TaskImp()+0x1c) [0x7f4367f677d8]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void __gnu_cxx::new_allocator<hammer::TaskImp<void ()> >::destroy<hammer::TaskImp<void ()> >(hammer::TaskImp<void ()>*)+0x1c) [0x7f4367f67804]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void std::allocator_traits<std::allocator<hammer::TaskImp<void ()> > >::destroy<hammer::TaskImp<void ()> >(std::allocator<hammer::TaskImp<void ()> >&, hammer::TaskImp<void ()>*)+0x23) [0x7f4367f6766d]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::_Sp_counted_ptr_inplace<hammer::TaskImp<void ()>, std::allocator<hammer::TaskImp<void ()> >, (__gnu_cxx::_Lock_policy)2>::_M_dispose()+0x37) [0x7f4367f671e9]
+    ./event_poller(std::_Sp_counted_base<(__gnu_cxx::_Lock_policy)2>::_M_release()+0x42) [0x410294]
+    ./event_poller(std::__shared_count<(__gnu_cxx::_Lock_policy)2>::~__shared_count()+0x27) [0x40f9b5]
+    ./event_poller(std::__shared_ptr<hammer::TaskImp<void ()>, (__gnu_cxx::_Lock_policy)2>::~__shared_ptr()+0x1c) [0x40f4ae]
+    ./event_poller(std::shared_ptr<hammer::TaskImp<void ()> >::~shared_ptr()+0x18) [0x40f4ca]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0x10bc5a) [0x7f4367f95c5a]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0x10edba) [0x7f4367f98dba]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::function<void (std::shared_ptr<hammer::Socket>&)>::operator()(std::shared_ptr<hammer::Socket>&) const+0x49) [0x7f4367f905c1]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(hammer::Socket::onAccept(std::shared_ptr<hammer::SocketFD> const&, int)+0x3de) [0x7f4367f88504]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0xfddec) [0x7f4367f87dec]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(+0x1013d6) [0x7f4367f8b3d6]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::function<void (int)>::operator()(int) const+0x48) [0x7f4367f5d552]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(hammer::EventPoller::runLoop(bool)+0x2dc) [0x7f4367f5a334]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(void std::__invoke_impl<void, void (hammer::EventPoller::*)(bool), hammer::EventPoller*, bool>(std::__invoke_memfun_deref, void (hammer::EventPoller::*&&)(bool), hammer::EventPoller*&&, bool&&)+0x82) [0x7f4367f5ef75]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::__invoke_result<void (hammer::EventPoller::*)(bool), hammer::EventPoller*, bool>::type std::__invoke<void (hammer::EventPoller::*)(bool), hammer::EventPoller*, bool>(void (hammer::EventPoller::*&&)(bool), hammer::EventPoller*&&, bool&&)+0x4f) [0x7f4367f5d927]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(decltype (__invoke((_S_declval<0ul>)(), (_S_declval<1ul>)(), (_S_declval<2ul>)())) std::thread::_Invoker<std::tuple<void (hammer::EventPoller::*)(bool), hammer::EventPoller*, bool> >::_M_invoke<0ul, 1ul, 2ul>(std::_Index_tuple<0ul, 1ul, 2ul>)+0x5f) [0x7f4367f6789b]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::thread::_Invoker<std::tuple<void (hammer::EventPoller::*)(bool), hammer::EventPoller*, bool> >::operator()()+0x18) [0x7f4367f676c8]
+    /root/CLionProjects/local_git/hammer/build/libhammer.so(std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (hammer::EventPoller::*)(bool), hammer::EventPoller*, bool> > >::_M_run()+0x1c) [0x7f4367f6752c]
+    /usr/lib64/libstdc++.so.6(+0xc2ba3) [0x7f4366b7bba3]
+    /usr/lib64/libpthread.so.0(+0x817a) [0x7f4367c7217a]
+    /usr/lib64/libc.so.6(clone+0x43) [0x7f4366256dc3]
+

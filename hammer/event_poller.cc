@@ -87,6 +87,7 @@ namespace hammer {
             std::lock_guard<std::mutex> lock(m_task_mutex);
             task_list.swap(m_task_list);
         }
+        HAMMER_LOG_WARN(g_logger) << "before onPipeEvent list for_each";
         task_list.for_each([&](const Task::ptr &task) {
             try {
                 (*task)();
@@ -96,6 +97,7 @@ namespace hammer {
                 HAMMER_LOG_WARN(g_logger) << "Exception occurred when do async task: " << e.what();
             }
         });
+        HAMMER_LOG_WARN(g_logger) << "after onPipeEvent list for_each";
     }
 
     int EventPoller::addEvent(int fd, int event, PollEventCB cb) {

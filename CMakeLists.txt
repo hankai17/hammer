@@ -47,4 +47,5 @@ function(hammer_add_executable targetname srcs depends libs)
 endfunction()
 
 hammer_add_executable(logger_test tests/log_test.cc ${PROJECT_NAME} "${LIBS}")
+hammer_add_executable(task_test tests/task_test.cc ${PROJECT_NAME} "${LIBS}")
 hammer_add_executable(event_poller tests/event_poller.cc ${PROJECT_NAME} "${LIBS}")
