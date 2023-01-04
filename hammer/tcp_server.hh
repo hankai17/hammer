@@ -28,13 +28,13 @@ namespace hammer {
         void setOnErr(Socket::onErrCB cb) { m_on_err_socket = std::move(cb); }
 
     protected:
-        virtual Socket::ptr onBeforeAcceptConnection(const EventPoller::ptr &poller);
+        virtual Socket* onBeforeAcceptConnection(const EventPoller::ptr &poller);
         virtual void onAcceptConnection(const Socket::ptr &sock);
 
         virtual TcpServer::ptr onCreateServer(const EventPoller::ptr &poller);
         virtual void cloneFrom(const TcpServer &that);
     private:
-        Socket::ptr createSocket(const EventPoller::ptr &poller);
+        Socket* createSocket(const EventPoller::ptr &poller);
         void inactivityCop();
         ptr getServer(const EventPoller *poller) const;
         std::string toString();

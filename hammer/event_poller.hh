@@ -235,13 +235,13 @@ namespace hammer {
             public std::enable_shared_from_this<WorkThreadPool> {
     public:
         using ptr = std::shared_ptr<WorkThreadPool>;
-        WorkThreadPool() { addPoller("work poller", m_poll_size); }
+        WorkThreadPool() { addPoller("work poller", m_pool_size); }
         ~WorkThreadPool() override = default;
-        void setPoolSize(size_t size = 0) { m_poll_size = size; }
+        void setPoolSize(size_t size = 0) { m_pool_size = size; }
         EventPoller::ptr getFirstPoller() { return std::dynamic_pointer_cast<EventPoller>(m_threads.front()); }
         EventPoller::ptr getPoller() { return std::dynamic_pointer_cast<EventPoller>(getExecutor()); }
     private:
-        size_t  m_poll_size = 0;
+        size_t  m_pool_size = 0;
     };
 
 }

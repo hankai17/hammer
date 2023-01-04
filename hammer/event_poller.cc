@@ -87,7 +87,6 @@ namespace hammer {
             std::lock_guard<std::mutex> lock(m_task_mutex);
             task_list.swap(m_task_list);
         }
-        HAMMER_LOG_WARN(g_logger) << "before onPipeEvent list for_each";
         task_list.for_each([&](const Task::ptr &task) {
             try {
                 (*task)();
@@ -97,7 +96,6 @@ namespace hammer {
                 HAMMER_LOG_WARN(g_logger) << "Exception occurred when do async task: " << e.what();
             }
         });
-        HAMMER_LOG_WARN(g_logger) << "after onPipeEvent list for_each";
     }
 
     int EventPoller::addEvent(int fd, int event, PollEventCB cb) {
@@ -106,7 +104,6 @@ namespace hammer {
 		    epoll_event ev = {0};
             ev.events = toEpollEvent(event);
             ev.data.fd = fd;
-            HAMMER_LOG_DEBUG(g_logger) << "2insert fd: " << fd <<  " into tree";
             int ret = epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, fd, &ev);
             if (ret == 0) {
                 m_event_map.emplace(fd, std::make_shared<PollEventCB>(std::move(cb)));
@@ -232,13 +229,15 @@ namespace hammer {
     
     size_t TaskExecutorManager::addPoller(const std::string &name, size_t size) {
         auto cpus = std::thread::hardware_concurrency();
+        cpus = 2;
         size = size > 0 ? size : cpus;
         for (size_t i = 0; i < size; i++) {
             auto full_name = name + "-" + std::to_string(i);
             EventPoller::ptr poller(new EventPoller(full_name));
             poller->runLoop(false);
-            poller->async([full_name]() {
+            poller->async([i, cpus, full_name]() {
                 pthread_setname_np(pthread_self(), full_name.substr(0, 15).c_str());
+                setThreadAffinity(i % cpus);
             });
             m_threads.emplace_back(std::move(poller));
         }

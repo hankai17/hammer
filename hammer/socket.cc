@@ -40,7 +40,7 @@ namespace hammer {
 
     SocketNO::~SocketNO() {
         ::shutdown(m_fd, SHUT_RDWR);
-        HAMMER_LOG_WARN(g_logger) << "close SocketNO fd: " << m_fd;
+        //HAMMER_LOG_DEBUG(g_logger) << "close SocketNO fd: " << m_fd;
         close(m_fd);
     }
 
@@ -86,9 +86,12 @@ namespace hammer {
         return std::make_shared<Socket>(poller, enable_mutex);
     }
 
+    Socket* Socket::createSocketPtr(const EventPoller::ptr &poller, bool enable_mutex) {
+        return new Socket(poller, enable_mutex);
+    }
+
     SocketFD::ptr Socket::setSocketFD(int fd) {
         closeSocket();
-        HAMMER_LOG_WARN(g_logger) << "createSocket setSocketFD fd: " << fd;
         auto socket = std::make_shared<SocketFD>(fd, SocketFD::SocketType::TCP, m_poller);
         LOCK_GUARD(m_socketFD_mutex);
         m_fd = socket;
@@ -475,7 +478,7 @@ namespace hammer {
                 SocketOps::setCloseWait(fd);
                 SocketOps::setCloExec(fd);
 
-                Socket::ptr new_sock;
+                Socket* new_sock = nullptr;
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
                     new_sock = m_on_before_accept_cb(m_poller);
@@ -485,13 +488,12 @@ namespace hammer {
                     continue;
                 }
                 if (!new_sock) {
-                    new_sock = Socket::createSocket(m_poller, false);
+                    new_sock = Socket::createSocketPtr(m_poller, false);
                 }
                 new_sock->setSocketFD(fd);
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
                     m_on_accept_cb(new_sock);
-                    //usleep(1000 * 1);
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when emit onAccept: " << e.what();
                     continue;
@@ -666,7 +668,7 @@ namespace hammer {
         if (cb) {
             m_on_accept_cb = std::move(cb);
         } else {
-            m_on_accept_cb = [](Socket::ptr &sock) {
+            m_on_accept_cb = [](Socket *sock) {
                 HAMMER_LOG_WARN(g_logger) << "Socket not set accept cb";
             };
         }

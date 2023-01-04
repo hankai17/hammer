@@ -389,8 +389,8 @@ namespace hammer {
         GetMap()[m_root->getName()] = m_root;
 
         m_system.reset(new Logger("system"));
-        m_system->addAppender(LogAppender::ptr(new FileLogAppender("./1.log")));
-        //m_system->addAppender(LogAppender::ptr(new  StdoutLogAppender));
+        //m_system->addAppender(LogAppender::ptr(new FileLogAppender("./1.log")));
+        m_system->addAppender(LogAppender::ptr(new  StdoutLogAppender));
         GetMap()[m_system->getName()] = m_system;
     }
 

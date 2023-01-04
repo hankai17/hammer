@@ -32,26 +32,18 @@ namespace hammer {
     TcpServer::TcpServer(const EventPoller::ptr &poller) :
             m_poller(poller) {
         m_on_create_socket = [](const EventPoller::ptr &poller) {
-           return Socket::createSocket(poller, false);
+           return Socket::createSocketPtr(poller, false);
         };
-        m_socket = createSocket(poller);
+        m_socket = Socket::createSocket(poller);
         m_socket->setOnBeforeAccept([this](const EventPoller::ptr &poller) {
             return onBeforeAcceptConnection(poller);
         });
-        m_socket->setOnAccept([this](Socket::ptr &sock) {
-            int fd = sock->getFD();
-            HAMMER_LOG_DEBUG(g_logger) << "onAccept: " << fd;
+        m_socket->setOnAccept([this](Socket* sock) {
             auto poller = sock->getPoller().get();
             auto server = getServer(poller);
-            //poller->async([server, sock]() { // sock use_count == 2 if sleep after m_on_accept_cb
-            //poller->async([server, sock=std::forward<Socket::ptr>(sock)]()
-            poller->async([server, sock=std::move(sock)]() { // 为什么task会在 accept线程析构?
-                                                             // 看在async中 auto ret = std::make_shared<Task>(std::move(task));
-                                                             // 这个make_shared 等于仍是在本accept线程中 分配task对象
-                                                             // 往下看 它把这个对象扔到队列里然后通知 这里假设扔到了poller2中 且poller2非常快的返回 
-                                                             // 快到async还没来得及返回 即task对象将在async里析构 然后task里包得sock也在async之后析构 即在accept线程中析构了
-                server->onAcceptConnection(sock);
-                /*
+            poller->async([server, sock]() {
+                Socket::ptr sock_ptr(sock);
+                server->onAcceptConnection(sock_ptr);
                 try {
                     if (!sock->attachEvent(sock->getSockFD())) {
                         sock->emitErr(SocketException(ERRCode::EEOF, "add event to poller failed when accept a new socket"));
@@ -59,25 +51,22 @@ namespace hammer {
                 } catch (std::exception &e) {
                     HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
                 }
-                 */
             });
-            HAMMER_LOG_WARN(g_logger) << "onAccept: after poller->aync: " << fd;
         });
     }
 
-    Socket::ptr TcpServer::createSocket(const EventPoller::ptr &poller) {
+    Socket* TcpServer::createSocket(const EventPoller::ptr &poller) {
         return m_on_create_socket(poller);
     }
 
-    Socket::ptr TcpServer::onBeforeAcceptConnection(const EventPoller::ptr &poller) {
+    Socket* TcpServer::onBeforeAcceptConnection(const EventPoller::ptr &poller) {
         HAMMER_ASSERT(poller->isCurrentThread());
         //return nullptr;
         return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {
-        HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
-        return;
+        HAMMER_LOG_DEBUG(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
         std::weak_ptr<TcpServer> weak_self = std::dynamic_pointer_cast<TcpServer>(shared_from_this());
         std::weak_ptr<Socket> weak_sock = sock;
         auto sock_ptr = sock.get();
@@ -85,7 +74,7 @@ namespace hammer {
         HAMMER_ASSERT(success = true);
         HAMMER_ASSERT(m_poller->isCurrentThread());
 
-        HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
+        //HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
         //HAMMER_LOG_DEBUG(g_logger) << "onAcceptConnection: " << toString();
         //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
         sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
@@ -98,7 +87,8 @@ namespace hammer {
             }
             HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
 
-            std::string resp = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello world";
+            //std::string resp = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello world";
+            std::string resp = "HTTP/1.1 200 OK\r\n\r\n";
             auto strong_sock = weak_sock.lock();
             if (!strong_sock) {
                 return;

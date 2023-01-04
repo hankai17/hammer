@@ -153,6 +153,7 @@ namespace hammer {
 	int get_daylight_active();
 	uint64_t getCurrentMillSecond(bool system_time = false);
 	uint64_t getCurrentMicroSecond(bool system_time = false);
+    bool setThreadAffinity(int i);
 }
 
 #endif //HAMMER_UTIL_HH

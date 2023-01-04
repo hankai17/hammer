@@ -111,14 +111,15 @@ namespace hammer {
         using ConnCB = std::function<void(int)>;
         using onErrCB = std::function<void(const SocketException &)>;
         using onReadCB = std::function<void(const MBuffer::ptr &, struct sockaddr *, int addr_len)>;
-        using onAcceptCB = std::function<void(Socket::ptr &)>;
+        using onAcceptCB = std::function<void(Socket *)>;
         using onWrittenCB = std::function<bool()>;
-        using onCreateSocketCB = std::function<ptr(const EventPoller::ptr &)>;
+        using onCreateSocketCB = std::function<Socket*(const EventPoller::ptr &)>;
 
         Socket(const EventPoller::ptr poller = nullptr, bool enable_mutex = true);
         void closeSocket();
         ~Socket();
         static Socket::ptr createSocket(const EventPoller::ptr &poller, bool enable_mutex = true);
+        static Socket* createSocketPtr(const EventPoller::ptr &poller, bool enable_mutex = true);
         SocketFD::ptr setSocketFD(int fd);
 
         std::string getLocalIP();
@@ -182,7 +183,7 @@ namespace hammer {
         mutable MutexWrapper<std::recursive_mutex>  m_socketFD_mutex;
 
         onErrCB             m_on_err_cb = nullptr;
-        onCreateSocketCB    m_on_before_accept_cb = nullptr; // consutruct by self costom
+        onCreateSocketCB    m_on_before_accept_cb = nullptr;
         onAcceptCB          m_on_accept_cb = nullptr;
         onReadCB            m_on_read_cb = nullptr;
         onWrittenCB         m_on_written_cb = nullptr;
