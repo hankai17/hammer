@@ -51,7 +51,7 @@ int tcp_server_test()
 {
     auto poller = hammer::Singleton<hammer::EventPollerPool>::instance().getPoller();
     hammer::TcpServer::ptr server = std::make_shared<hammer::TcpServer>(poller);
-    server->start(9527, "0.0.0.0");
+    server->start_internal(9527, "0.0.0.0");
     while(1) { sleep(1); }
     return 0;
 }
@@ -100,7 +100,39 @@ int tcp_server_api()
     // 如果暴力点 这个回调参数中 应该加上socket 就行muduo里一样
     // 缺点: 直接在server里注册业务回调 太过暴力且不优雅 违背设计模式6大原则2)单一原则
     // 应该 设计成继承或是模板
-    server->start(9527, "0.0.0.0");
+
+    // 直接设计一个中间层session里面包装有socket 然后tcp_server对外暴露的业务回调中(即业务回调点:onRead/onErr ) 调用session
+    server->start_internal(9527, "0.0.0.0");
+    while(1) { sleep(1); }
+    return 0;
+}
+
+class EchoSession : public hammer::Session {
+public:
+    EchoSession(const hammer::TcpServer::ptr &server, const hammer::Socket::ptr &sock) 
+        : hammer::Session(server, sock) {}
+    ~EchoSession() {}
+    
+    virtual void onRecv(const hammer::MBuffer::ptr &buf) {
+        //HAMMER_LOG_WARN(g_logger) << "onRecv buf: " << buf->toString();
+        buf->clear();
+        auto resp = std::make_shared<hammer::MBuffer>("HTTP/1.1 200 OK\r\n\r\n");
+        send(resp);
+    }
+    virtual void onError(const hammer::SocketException &e) {
+        //HAMMER_LOG_WARN(g_logger) << "onError cb";
+    }
+    virtual void onManager() {
+        HAMMER_LOG_WARN(g_logger) << "onManager cb";
+    }
+private:
+};
+
+int test_server()
+{
+    auto poller = hammer::Singleton<hammer::EventPollerPool>::instance().getPoller();
+    hammer::TcpServer::ptr server = std::make_shared<hammer::TcpServer>(poller);
+    server->start<EchoSession>(9527, "0.0.0.0");
     while(1) { sleep(1); }
     return 0;
 }
@@ -108,7 +140,8 @@ int tcp_server_api()
 int main()
 {
     //tcp_server_test();
-    tcp_server_api();
+    //tcp_server_api();
+    test_server();
     while(1) { sleep(1); }
     return 0;
 }

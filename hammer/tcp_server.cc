@@ -9,6 +9,7 @@
 
 namespace hammer {
     static Logger::ptr g_logger = HAMMER_LOG_NAME("system");
+    static std::atomic<uint64_t> g_session_index{0};
 
     static void defaultReadCB(const MBuffer::ptr &buf, 
             struct sockaddr *addr, int addr_len) {
@@ -24,9 +25,74 @@ namespace hammer {
         return true;
     }
 
-    static void defaultErrCB(const SocketException & e) {
+    static void defaultErrCB(const SocketException &e) {
         HAMMER_LOG_WARN(g_logger) << "defaultErrCB err: " << e.what();
         return;
+    }
+
+    Session::Session(const std::weak_ptr<TcpServer> &server, const Socket::ptr &sock) 
+        : m_socket(sock), m_server(server) {
+        m_id = getID();
+    }
+
+    ssize_t Session::send(MBuffer::ptr buf) {
+        return m_socket->send(std::move(buf));
+    }
+
+    std::string Session::getID() const {
+        if (m_id.empty()) {
+            m_id = std::to_string(++g_session_index) + '-' 
+                    + std::to_string(m_socket->getFD());
+        }
+        return m_id;
+    }
+
+    void Session::shutdown(const SocketException &e) {
+        m_socket->emitErr(e);
+    }
+
+    void Session::safeShutdown() {
+        /*
+        std::weak_ptr<Session> weak_self = shared_from_this();
+        async_first([weak_self]() {
+            auto strong_self = weak_self.lock();
+            if (strong_self) {
+                strong_self->shutdown();
+            }
+        });
+        */
+    }
+
+    Session::ptr SessionManager::get(const std::string &key) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_sessions.find(key);
+        if (it == m_sessions.end()) {
+            return nullptr;
+        }
+        return it->second.lock();
+    }
+
+    void SessionManager::foreach(const sessionCB &cb) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto it = m_sessions.begin(); it != m_sessions.end();) {
+            auto session = it->second.lock();
+            if (!session) {
+                m_sessions.erase(it++);
+                continue;
+            }
+            cb(it->first, session); 
+            ++it;
+        } 
+    }
+
+    bool SessionManager::add(const std::string &key, const Session::ptr &session) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_sessions.emplace(key, session).second;
+    }
+
+    bool SessionManager::del(const std::string &key) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_sessions.erase(key);
     }
 
     TcpServer::TcpServer(const EventPoller::ptr &poller) :
@@ -66,63 +132,42 @@ namespace hammer {
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {
-        HAMMER_LOG_DEBUG(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
         std::weak_ptr<TcpServer> weak_self = std::dynamic_pointer_cast<TcpServer>(shared_from_this());
-        std::weak_ptr<Socket> weak_sock = sock;
-        auto sock_ptr = sock.get();
-        auto success = m_tcp_conns.emplace(sock_ptr, sock).second;
+        auto session = m_session_alloc_cb(std::dynamic_pointer_cast<TcpServer>(shared_from_this()), sock);
+        auto success = m_sessions.emplace(session.get(), session).second;
+
         HAMMER_ASSERT(success = true);
         HAMMER_ASSERT(m_poller->isCurrentThread());
 
-        //HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
-        //HAMMER_LOG_DEBUG(g_logger) << "onAcceptConnection: " << toString();
-        sock->setOnReadCB(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
-        sock->setOnWrittenCB(m_on_written_socket == nullptr ?  defaultWrittenCB : m_on_written_socket);
-        sock->setOnErrCB(m_on_err_socket == nullptr ?  defaultErrCB : m_on_err_socket);
-
-        /*
-        sock->setOnReadCB([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
-            if (buf->readAvailable()) {
-                buf->clear();
-            }
-            auto strong_self = weak_self.lock();
-            if (!strong_self) {
+        std::weak_ptr<Session> weak_session = session;
+        sock->setOnReadCB([weak_session](const MBuffer::ptr &buf, struct sockaddr *, int) {
+            auto strong_session = weak_session.lock();
+            if (!strong_session) {
                 return;
             }
-            HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
-
-            //std::string resp = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello world";
-            std::string resp = "HTTP/1.1 200 OK\r\n\r\n";
-            auto strong_sock = weak_sock.lock();
-            if (!strong_sock) {
-                return;
+            try {
+                strong_session->onRecv(buf);
+            } catch (SocketException &e) {
+                strong_session->shutdown(e);
+            } catch (std::exception &e) {
+                strong_session->shutdown(SocketException(ERRCode::SHUTDOWN, e.what()));
             }
-            strong_sock->send(resp);
         });
-        sock->setOnWrittenCB([weak_self, sock_ptr]()->bool {
-            auto strong_self = weak_self.lock();
-            if (!strong_self) {
-                return false;
-            }
-            HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
-            //HAMMER_LOG_WARN(g_logger) << "onWritten erase fd: " << sock_ptr->getFD();
-            strong_self->m_tcp_conns.erase(sock_ptr);
-            HAMMER_LOG_DEBUG(g_logger) << "after onWritten erase, " << strong_self->toString();
-            return true;
-        });
-        sock->setOnErrCB([weak_self, weak_sock, sock_ptr](const SocketException &e) {
+        auto session_ptr = session.get();
+        sock->setOnErrCB([weak_self, weak_session, session_ptr](const SocketException &e) {
             OnceToken token(nullptr, [&]() {
                 auto strong_self = weak_self.lock();
                 if (!strong_self) {
                     return;
                 }
                 HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
-                //HAMMER_LOG_WARN(g_logger) << "onErr erase fd: " << sock_ptr->getFD();
-                strong_self->m_tcp_conns.erase(sock_ptr);
-                HAMMER_LOG_DEBUG(g_logger) << "after onErr erase, " << strong_self->toString();
+                strong_self->m_sessions.erase(session_ptr);
             });
+            auto strong_session = weak_session.lock();
+            if (strong_session) {
+                strong_session->onError(e);
+            }
         });
-        */
         return;
     }
 
@@ -183,7 +228,7 @@ namespace hammer {
         return ss.str();
     }
 
-    void TcpServer::start(uint16_t port, const std::string &host, uint32_t backlog) {
+    void TcpServer::start_internal(uint16_t port, const std::string &host, uint32_t backlog) {
         if (!m_socket->listen(port, host.c_str(), backlog)) {
             throw std::runtime_error("listen failed");
         }

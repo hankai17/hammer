@@ -160,7 +160,6 @@ namespace hammer {
         ssize_t send(std::string buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0);
         ssize_t send(MBuffer::ptr buf, struct sockaddr *addr = nullptr, socklen_t addr_len = 0);
 
-        //////
         EventPoller::ptr getPoller() const { return m_poller; }
         MutexWrapper<std::recursive_mutex> &getFdMutex() const { return m_socketFD_mutex; }
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
@@ -177,7 +176,7 @@ namespace hammer {
 
     private:
         EventPoller::ptr    m_poller = nullptr;
-        SocketFD::ptr       m_fd;
+        SocketFD::ptr       m_fd = nullptr;
         Timer::ptr          m_conn_timer = nullptr;
         std::shared_ptr<ConnCB> m_conn_cb = nullptr;
         MBuffer::ptr        m_read_buffer = nullptr;
@@ -199,40 +198,7 @@ namespace hammer {
         MutexWrapper<std::recursive_mutex>  m_write_buffer_waiting_mutex;
         MBuffer::ptr        m_write_buffer_sending = nullptr;
         MutexWrapper<std::recursive_mutex>  m_write_buffer_sending_mutex;
-    };
-
-    class Session : public std::enable_shared_from_this<Session> {
-    public:
-        using ptr = std::shared_ptr<Session>;
-        Session(const Socket::ptr &sock);
-        ~Session() = default;
-        
-        virtual void onRecv(const MBuffer::ptr &buf) = 0;
-        virtual void onError(const SocketException &err) = 0;
-        virtual void onManager() = 0;
-        std::string getID() const;
-        void safeShutdown();
-    private:
-        mutable std::string m_id;
-        Socket::ptr         m_socket;
-    };
-
-    class SessionManager : public std::enable_shared_from_this<SessionManager> {
-    public:
-        using ptr = std::shared_ptr<SessionManager>;
-        using sessionCB = std::function<void(const std::string &id, const Session::ptr &session)>;
-        SessionManager() = default;
-        ~SessionManager() = default;
-        Session::ptr get(const std::string &key);
-        void foreach(const sessionCB &cb);
-    private:
-        bool add(const std::string &key, const Session::ptr &session);
-        bool del(const std::string &key);
-    private:
-        std::mutex          m_mutex;
-        std::unordered_map<std::string, std::weak_ptr<Session>> m_sessions;
-    };
-    
+    };  
 }
 
 #endif //HAMMER_SOCKET_HH
