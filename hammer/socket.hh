@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <memory>
+#include <atomic>
 
 #include "nocopy.hh"
 #include "event_poller.hh"
@@ -108,12 +109,12 @@ namespace hammer {
     class Socket : public std::enable_shared_from_this<Socket>, public Nocopyable {
     public:
         using ptr = std::shared_ptr<Socket>;
-        using ConnCB = std::function<void(int)>;
-        using onErrCB = std::function<void(const SocketException &)>;
-        using onReadCB = std::function<void(const MBuffer::ptr &, struct sockaddr *, int addr_len)>;
-        using onAcceptCB = std::function<void(Socket *)>;
-        using onWrittenCB = std::function<bool()>;
         using onCreateSocketCB = std::function<Socket*(const EventPoller::ptr &)>;
+        using onAcceptCB = std::function<void(Socket *)>;
+        using onReadCB = std::function<void(const MBuffer::ptr &, struct sockaddr *, int addr_len)>;
+        using onWrittenCB = std::function<bool()>;
+        using onErrCB = std::function<void(const SocketException &)>;
+        using ConnCB = std::function<void(int)>;
 
         Socket(const EventPoller::ptr poller = nullptr, bool enable_mutex = true);
         void closeSocket();
@@ -165,11 +166,11 @@ namespace hammer {
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
         SocketFD::ptr getSockFD() const { return m_fd; }
         const onErrCB &getErrCB() { return m_on_err_cb; }
-        void setOnWritten(onWrittenCB cb);
-        void setOnBeforeAccept(onCreateSocketCB cb);
-        void setOnAccept(onAcceptCB cb);
-        void setOnRead(onReadCB cb);
-        void setOnErr(onErrCB cb);
+        void setOnWrittenCB(onWrittenCB cb);
+        void setOnBeforeAcceptCB(onCreateSocketCB cb);
+        void setOnAcceptCB(onAcceptCB cb);
+        void setOnReadCB(onReadCB cb);
+        void setOnErrCB(onErrCB cb);
 
         SocketFD::ptr cloneSocketFD(const Socket &other);
         bool cloneFromListenSocket(const Socket &other);
@@ -198,6 +199,38 @@ namespace hammer {
         MutexWrapper<std::recursive_mutex>  m_write_buffer_waiting_mutex;
         MBuffer::ptr        m_write_buffer_sending = nullptr;
         MutexWrapper<std::recursive_mutex>  m_write_buffer_sending_mutex;
+    };
+
+    class Session : public std::enable_shared_from_this<Session> {
+    public:
+        using ptr = std::shared_ptr<Session>;
+        Session(const Socket::ptr &sock);
+        ~Session() = default;
+        
+        virtual void onRecv(const MBuffer::ptr &buf) = 0;
+        virtual void onError(const SocketException &err) = 0;
+        virtual void onManager() = 0;
+        std::string getID() const;
+        void safeShutdown();
+    private:
+        mutable std::string m_id;
+        Socket::ptr         m_socket;
+    };
+
+    class SessionManager : public std::enable_shared_from_this<SessionManager> {
+    public:
+        using ptr = std::shared_ptr<SessionManager>;
+        using sessionCB = std::function<void(const std::string &id, const Session::ptr &session)>;
+        SessionManager() = default;
+        ~SessionManager() = default;
+        Session::ptr get(const std::string &key);
+        void foreach(const sessionCB &cb);
+    private:
+        bool add(const std::string &key, const Session::ptr &session);
+        bool del(const std::string &key);
+    private:
+        std::mutex          m_mutex;
+        std::unordered_map<std::string, std::weak_ptr<Session>> m_sessions;
     };
     
 }

@@ -41,6 +41,20 @@ m_on_accept_cb(new_sock, completed); 中
 必须将accept线程中 所有的关于socket的引用都"断舍离"
 ---注意这里的"断舍离"意思是 lambda捕获表达式的那种(boost源码中见到的c++14)
 
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+关于设计
+
+关于新连接读写监听 总体上采用非"批量读写(ats那种 针对读写有ready队列)"模式
+
+相对来说muduo的设计 分层(channel->connection 然后acceptor/server/client)更好一些 更清晰一些
+ats分层:    | ip | fd buffer | ssl |
+muduo分层:  channel:fd + event + cb | connection: ip socket buffer |
+hammer基本上没有分层 直接一个socket 得益于lambda 直接把weak_sock放到"可调对象"捕捉参数里 回调时直接可以拿到这个weak_sock 
+    将其还原成strong_sock 进行业务处理 从而绕过channel这一层直接拿到socket
+
+hammer暴露给上层的回调传参很简单 基本上参数中有buffer即可  eg: onReadCB 
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Architecture:        x86_64
 CPU op-mode(s):      32-bit, 64-bit

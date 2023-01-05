@@ -69,13 +69,13 @@ namespace hammer {
             other.clear();
         }
         template<typename FUNC>
-        void for_each(FUNC &&func) {
+        void foreach(FUNC &&func) {
             for (auto &t : *this) {
                 func(t);
             }
         }
         template<typename FUNC>
-        void for_each(FUNC &&func) const {
+        void foreach(FUNC &&func) const {
             for (auto &t : *this) {
                 func(t);
             }

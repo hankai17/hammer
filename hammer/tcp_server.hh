@@ -23,9 +23,11 @@ namespace hammer {
 
         void start(uint16_t port, const std::string &host = "::", uint32_t backlog = 1024);
 
-        void setOnRead(Socket::onReadCB cb) { m_on_read_socket = std::move(cb); }
+        void setOnReadCB(Socket::onReadCB cb) { m_on_read_socket = std::move(cb); }
         void setOnWrittenCB(Socket::onWrittenCB cb) { m_on_written_socket = std::move(cb); }
-        void setOnErr(Socket::onErrCB cb) { m_on_err_socket = std::move(cb); }
+        void setOnErrCB(Socket::onErrCB cb) { m_on_err_socket = std::move(cb); }
+
+        std::unordered_map<Socket *, Socket::ptr> &getConnections() { return m_tcp_conns; }
 
     protected:
         virtual Socket* onBeforeAcceptConnection(const EventPoller::ptr &poller);

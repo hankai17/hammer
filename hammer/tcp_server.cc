@@ -35,10 +35,10 @@ namespace hammer {
            return Socket::createSocketPtr(poller, false);
         };
         m_socket = Socket::createSocket(poller);
-        m_socket->setOnBeforeAccept([this](const EventPoller::ptr &poller) {
+        m_socket->setOnBeforeAcceptCB([this](const EventPoller::ptr &poller) {
             return onBeforeAcceptConnection(poller);
         });
-        m_socket->setOnAccept([this](Socket* sock) {
+        m_socket->setOnAcceptCB([this](Socket* sock) {
             auto poller = sock->getPoller().get();
             auto server = getServer(poller);
             poller->async([server, sock]() {
@@ -76,8 +76,12 @@ namespace hammer {
 
         //HAMMER_LOG_WARN(g_logger) << "1onAcceptConnection setCB: " << sock->getFD(); // << ", emplace: " << sock_ptr;
         //HAMMER_LOG_DEBUG(g_logger) << "onAcceptConnection: " << toString();
-        //sock->setOnRead(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
-        sock->setOnRead([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
+        sock->setOnReadCB(m_on_read_socket == nullptr ? defaultReadCB : m_on_read_socket);
+        sock->setOnWrittenCB(m_on_written_socket == nullptr ?  defaultWrittenCB : m_on_written_socket);
+        sock->setOnErrCB(m_on_err_socket == nullptr ?  defaultErrCB : m_on_err_socket);
+
+        /*
+        sock->setOnReadCB([weak_self, weak_sock](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
             if (buf->readAvailable()) {
                 buf->clear();
             }
@@ -95,7 +99,7 @@ namespace hammer {
             }
             strong_sock->send(resp);
         });
-        sock->setOnWritten([weak_self, sock_ptr]()->bool {
+        sock->setOnWrittenCB([weak_self, sock_ptr]()->bool {
             auto strong_self = weak_self.lock();
             if (!strong_self) {
                 return false;
@@ -106,7 +110,7 @@ namespace hammer {
             HAMMER_LOG_DEBUG(g_logger) << "after onWritten erase, " << strong_self->toString();
             return true;
         });
-        sock->setOnErr([weak_self, weak_sock, sock_ptr](const SocketException &e) {
+        sock->setOnErrCB([weak_self, weak_sock, sock_ptr](const SocketException &e) {
             OnceToken token(nullptr, [&]() {
                 auto strong_self = weak_self.lock();
                 if (!strong_self) {
@@ -117,13 +121,8 @@ namespace hammer {
                 strong_self->m_tcp_conns.erase(sock_ptr);
                 HAMMER_LOG_DEBUG(g_logger) << "after onErr erase, " << strong_self->toString();
             });
-            /*
-            auto sock = weak_sock.lock();
-            if (sock) {
-                //sock->
-            }
-            */
         });
+        */
         return;
     }
 
@@ -197,7 +196,7 @@ namespace hammer {
             strong_self->inactivityCop();
             return true;
         }, m_poller);
-        Singleton<EventPollerPool>::instance().for_each([&](const TaskExecutor::ptr &executor) {
+        Singleton<EventPollerPool>::instance().foreach([&](const TaskExecutor::ptr &executor) {
             EventPoller::ptr poller = std::dynamic_pointer_cast<EventPoller>(executor);
             if (poller == m_poller || !poller) {
                 return;

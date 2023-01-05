@@ -470,7 +470,7 @@ namespace hammer {
     }
     
     template<typename FUN>
-    void for_each_netAdapter_posix(FUN &&fun) { //type: struct ifreq *
+    void foreach_netAdapter_posix(FUN &&fun) { //type: struct ifreq *
         struct ifconf ifconf;
         char buf[1024 * 10];
         //初始化ifconf
@@ -524,7 +524,7 @@ namespace hammer {
     
     std::string SocketOps::get_local_ip() {
         std::string address = "127.0.0.1";
-        for_each_netAdapter_posix([&](struct ifreq *adapter){
+        foreach_netAdapter_posix([&](struct ifreq *adapter){
             std::string ip = SocketOps::inet_ntoa(&(adapter->ifr_addr));
             if (strstr(adapter->ifr_name, "docker")) {
                 return false;
@@ -536,7 +536,7 @@ namespace hammer {
     
     std::vector<std::map<std::string, std::string> > SocketOps::getInterfaceList() {
         std::vector<std::map<std::string, std::string> > ret;
-        for_each_netAdapter_posix([&](struct ifreq *adapter){
+        foreach_netAdapter_posix([&](struct ifreq *adapter){
             std::map<std::string,std::string> obj;
             obj["ip"] = SocketOps::inet_ntoa(&(adapter->ifr_addr));
             obj["name"] = adapter->ifr_name;
@@ -587,7 +587,7 @@ namespace hammer {
     
     std::string SocketOps::get_ifr_ip(const char *if_name) {
         std::string ret;
-        for_each_netAdapter_posix([&](struct ifreq *adapter){
+        foreach_netAdapter_posix([&](struct ifreq *adapter){
             if(strcmp(adapter->ifr_name,if_name) == 0) {
                 ret = SocketOps::inet_ntoa(&(adapter->ifr_addr));
                 return true;
@@ -599,7 +599,7 @@ namespace hammer {
     
     std::string SocketOps::get_ifr_name(const char *local_ip) {
         std::string ret = "en0";
-        for_each_netAdapter_posix([&](struct ifreq *adapter){
+        foreach_netAdapter_posix([&](struct ifreq *adapter){
             std::string ip = SocketOps::inet_ntoa(&(adapter->ifr_addr));
             if(ip == local_ip) {
                 ret = adapter->ifr_name;

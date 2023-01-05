@@ -199,7 +199,7 @@ namespace hammer {
         size_t getExecutorSize() const { return m_threads.size(); }
         TaskExecutor::ptr getExecutor() { return m_threads[m_thread_pos++ % m_threads.size()]; }
         void getExecutorDelay(const std::function<void(const std::vector<int>&)> &cb) {}
-        void for_each(const std::function<void(const TaskExecutor::ptr &)> &cb) {
+        void foreach(const std::function<void(const TaskExecutor::ptr &)> &cb) {
             for (auto &ep : m_threads) {
                 cb(ep);
             }

@@ -87,7 +87,7 @@ namespace hammer {
             std::lock_guard<std::mutex> lock(m_task_mutex);
             task_list.swap(m_task_list);
         }
-        task_list.for_each([&](const Task::ptr &task) {
+        task_list.foreach([&](const Task::ptr &task) {
             try {
                 (*task)();
             } catch (ExitException &) {
@@ -229,7 +229,7 @@ namespace hammer {
     
     size_t TaskExecutorManager::addPoller(const std::string &name, size_t size) {
         auto cpus = std::thread::hardware_concurrency();
-        cpus = 2;
+        cpus = 1;
         size = size > 0 ? size : cpus;
         for (size_t i = 0; i < size; i++) {
             auto full_name = name + "-" + std::to_string(i);

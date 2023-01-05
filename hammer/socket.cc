@@ -294,7 +294,7 @@ namespace hammer {
             flag = m_on_written_cb();
         }
         if (!flag) {
-            setOnWritten(nullptr);
+            setOnWrittenCB(nullptr);
         }
     }
 
@@ -643,7 +643,7 @@ namespace hammer {
         return send_l(buf);
     }
 
-    void Socket::setOnWritten(onWrittenCB cb) {
+    void Socket::setOnWrittenCB(onWrittenCB cb) {
         LOCK_GUARD(m_event_cb_mutex);
         if (cb) {
             m_on_written_cb = std::move(cb);
@@ -652,7 +652,7 @@ namespace hammer {
         }
     }
 
-    void Socket::setOnBeforeAccept(onCreateSocketCB cb) {
+    void Socket::setOnBeforeAcceptCB(onCreateSocketCB cb) {
         LOCK_GUARD(m_event_cb_mutex);
         if (cb) {
             m_on_before_accept_cb = std::move(cb);
@@ -663,7 +663,7 @@ namespace hammer {
         }
     }
 
-    void Socket::setOnAccept(onAcceptCB cb) {
+    void Socket::setOnAcceptCB(onAcceptCB cb) {
         LOCK_GUARD(m_event_cb_mutex);
         if (cb) {
             m_on_accept_cb = std::move(cb);
@@ -674,7 +674,7 @@ namespace hammer {
         }
     }
 
-    void Socket::setOnRead(onReadCB cb) {
+    void Socket::setOnReadCB(onReadCB cb) {
         LOCK_GUARD(m_event_cb_mutex);
         if (cb) {
             m_on_read_cb = std::move(cb);
@@ -685,7 +685,7 @@ namespace hammer {
         }
     }
 
-    void Socket::setOnErr(onErrCB cb) {
+    void Socket::setOnErrCB(onErrCB cb) {
         LOCK_GUARD(m_event_cb_mutex);
         if (cb) {
             m_on_err_cb = std::move(cb);
@@ -716,6 +716,64 @@ namespace hammer {
             return false;
         }
         return listen(sock);
+    }
+
+    static std::atomic<uint64_t> g_session_index{0};
+
+    Session::Session(const Socket::ptr &sock) 
+        : m_socket(sock) {
+    }
+
+    std::string Session::getID() const {
+        if (m_id.empty()) {
+            m_id = std::to_string(++g_session_index) + '-' 
+                    + std::to_string(m_socket->getFD());
+        }
+        return m_id;
+    }
+
+    void Session::safeShutdown() {
+        /*
+        std::weak_ptr<Session> weak_self = shared_from_this();
+        async_first([weak_self]() {
+            auto strong_self = weak_self.lock();
+            if (strong_self) {
+                strong_self->shutdown();
+            }
+        });
+        */
+    }
+
+    Session::ptr SessionManager::get(const std::string &key) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_sessions.find(key);
+        if (it == m_sessions.end()) {
+            return nullptr;
+        }
+        return it->second.lock();
+    }
+
+    void SessionManager::foreach(const sessionCB &cb) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto it = m_sessions.begin(); it != m_sessions.end();) {
+            auto session = it->second.lock();
+            if (!session) {
+                m_sessions.erase(it++);
+                continue;
+            }
+            cb(it->first, session); 
+            ++it;
+        } 
+    }
+
+    bool SessionManager::add(const std::string &key, const Session::ptr &session) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_sessions.emplace(key, session).second;
+    }
+
+    bool SessionManager::del(const std::string &key) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_sessions.erase(key);
     }
 
 }
