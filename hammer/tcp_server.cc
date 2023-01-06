@@ -127,8 +127,8 @@ namespace hammer {
 
     Socket* TcpServer::onBeforeAcceptConnection(const EventPoller::ptr &poller) {
         HAMMER_ASSERT(poller->isCurrentThread());
-        //return nullptr;
-        return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
+        return nullptr;
+        //return createSocket(Singleton<EventPollerPool>::instance().getPoller(false));
     }
 
     void TcpServer::onAcceptConnection(const Socket::ptr &sock) {
@@ -153,6 +153,25 @@ namespace hammer {
                 strong_session->shutdown(SocketException(ERRCode::SHUTDOWN, e.what()));
             }
         });
+        #if HIGH_PERF == 0
+        sock->setOnWrittenCB([weak_session]() {
+            return true;
+            auto strong_session = weak_session.lock();
+            if (!strong_session) {
+                return false;
+            }
+            try {
+                strong_session->onWritten();
+            } catch (SocketException &e) {
+                strong_session->shutdown(e);
+                return false;
+            } catch (std::exception &e) {
+                strong_session->shutdown(SocketException(ERRCode::SHUTDOWN, e.what()));
+                return false;
+            }
+            return true;
+        });
+        #endif
         auto session_ptr = session.get();
         sock->setOnErrCB([weak_self, weak_session, session_ptr](const SocketException &e) {
             OnceToken token(nullptr, [&]() {

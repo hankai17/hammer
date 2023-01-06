@@ -9,7 +9,6 @@ set(CMAKE_CXX_STANDARD 17)
 
 include_directories("./" "./tests")
 
-find_library(YAMLCPP yaml-cpp /usr/local/lib/)
 find_library(THREAD pthread /usr/lib64/)
 #find_library(GTEST gtest /usr/local/lib64/)
 

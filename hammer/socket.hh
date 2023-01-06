@@ -14,6 +14,8 @@
 #include "event_poller.hh"
 #include "mbuffer.hh"
 
+#define HIGH_PERF 0
+
 namespace hammer {
     enum ERRCode : uint64_t {
         SUCCESS = 0,
@@ -165,10 +167,11 @@ namespace hammer {
         void setSockFD(const SocketFD::ptr &fd) { m_fd = fd; }
         SocketFD::ptr getSockFD() const { return m_fd; }
         const onErrCB &getErrCB() { return m_on_err_cb; }
-        void setOnWrittenCB(onWrittenCB cb);
+
         void setOnBeforeAcceptCB(onCreateSocketCB cb);
         void setOnAcceptCB(onAcceptCB cb);
         void setOnReadCB(onReadCB cb);
+        void setOnWrittenCB(onWrittenCB cb);
         void setOnErrCB(onErrCB cb);
 
         SocketFD::ptr cloneSocketFD(const Socket &other);
@@ -182,11 +185,11 @@ namespace hammer {
         MBuffer::ptr        m_read_buffer = nullptr;
         mutable MutexWrapper<std::recursive_mutex>  m_socketFD_mutex;
 
-        onErrCB             m_on_err_cb = nullptr;
         onCreateSocketCB    m_on_before_accept_cb = nullptr;
         onAcceptCB          m_on_accept_cb = nullptr;
         onReadCB            m_on_read_cb = nullptr;
         onWrittenCB         m_on_written_cb = nullptr;
+        onErrCB             m_on_err_cb = nullptr;
         MutexWrapper<std::recursive_mutex>  m_event_cb_mutex;
 
         bool                m_read_enable = false;

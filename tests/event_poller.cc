@@ -114,10 +114,13 @@ public:
     ~EchoSession() {}
     
     virtual void onRecv(const hammer::MBuffer::ptr &buf) {
-        //HAMMER_LOG_WARN(g_logger) << "onRecv buf: " << buf->toString();
-        buf->clear();
+        //buf->clear();
         auto resp = std::make_shared<hammer::MBuffer>("HTTP/1.1 200 OK\r\n\r\n");
         send(resp);
+        shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
+    }
+    virtual void onWritten() {
+        //shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
     }
     virtual void onError(const hammer::SocketException &e) {
         //HAMMER_LOG_WARN(g_logger) << "onError cb";

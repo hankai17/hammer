@@ -20,6 +20,7 @@ namespace hammer {
         ~Session() = default;
  
         virtual void onRecv(const MBuffer::ptr &buf) {};
+        virtual void onWritten() {};
         virtual void onError(const SocketException &e) {};
         virtual void onManager() {};
 

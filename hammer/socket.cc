@@ -54,6 +54,13 @@ namespace hammer {
         }
         m_write_buffer_waiting = std::make_shared<MBuffer>();
         m_write_buffer_sending = std::make_shared<MBuffer>();
+        setOnBeforeAcceptCB(nullptr);
+        setOnAcceptCB(nullptr);
+        setOnReadCB(nullptr);
+        #if HIGH_PERF == 0
+        setOnWrittenCB(nullptr);
+        #endif
+        setOnErrCB(nullptr);
     }
 
     void Socket::closeSocket() {
@@ -375,47 +382,30 @@ namespace hammer {
     }
 
     bool Socket::attachEvent(const SocketFD::ptr &sock) {
-        //std::weak_ptr<Socket> weak_self = shared_from_this();
         std::weak_ptr<Socket> weak_self = std::dynamic_pointer_cast<Socket>(shared_from_this());
         std::weak_ptr<SocketFD> weak_sock = sock;
         m_read_enable = true;
         m_read_buffer = m_poller->getSharedBuffer();
         auto is_udp = sock->getType() == SocketFD::SocketType::UDP;
-        int fd = sock->getFD();
-        Socket *sock_addr = this;
         int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR,
-                [weak_self, weak_sock, is_udp, fd, sock_addr](int event) {
+                [weak_self, weak_sock, is_udp](int event) {
             auto strong_self = weak_self.lock();
             auto strong_sock = weak_sock.lock();
             if (!strong_self || !strong_sock) {
-                if (strong_self == nullptr && strong_sock == nullptr) {
-                    HAMMER_LOG_WARN(g_logger) << "attachEvent both nullptr fd: " << fd << ", sock_addr: " << sock_addr;
-                    sleep(5);
-                    HAMMER_ASSERT(0);
-                } else {
-                    if (strong_self == nullptr) {
-                        HAMMER_LOG_WARN(g_logger) << "attachEvent strong_self nullptr fd: " << fd;
-                    }
-                    if (strong_sock == nullptr) {
-                        HAMMER_LOG_WARN(g_logger) << "attachEvent strong_sock nullptr fd: " << fd;
-                    }
-                }
+                HAMMER_ASSERT(0);
                 return;
             }
             if (event & EventPoller::Event::READ) {
-                HAMMER_LOG_DEBUG(g_logger) << "attachEvent socket onRead: " << strong_sock->getFD();
                 strong_self->setReadTriggered(true);
                 strong_self->onRead(strong_sock, is_udp);
             }
             if (event & EventPoller::Event::WRITE) {
-                HAMMER_LOG_DEBUG(g_logger) << "attachEvent socket onWrite: " << strong_sock->getFD();
                 strong_self->setWriteTriggered(true);
                 strong_self->onWrite(strong_sock);
             }
             if (event & EventPoller::Event::ERROR) {
                 strong_self->setReadTriggered(true);
                 strong_self->setWriteTriggered(true);
-                HAMMER_LOG_WARN(g_logger) << "attachEvent socket onErr: " << strong_sock->getFD();
                 strong_self->emitErr(getSocketError(strong_sock));
             }
         });
