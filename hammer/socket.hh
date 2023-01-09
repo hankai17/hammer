@@ -14,8 +14,6 @@
 #include "event_poller.hh"
 #include "mbuffer.hh"
 
-#define HIGH_PERF 0
-
 namespace hammer {
     enum ERRCode : uint64_t {
         SUCCESS = 0,
@@ -74,6 +72,7 @@ namespace hammer {
         SocketNO(int fd) : m_fd(fd) {}
         ~SocketNO();
         int getFD() const { return m_fd; }
+        void shutdown() { ::shutdown(m_fd, SHUT_WR); }
     private:
         int         m_fd;
     };
@@ -100,6 +99,7 @@ namespace hammer {
         ~SocketFD() {
             m_poller->delEvent(m_fd->getFD(), [](int) {});
         }
+        void shutdown() { m_fd->shutdown(); }
         int getFD() const { return m_fd->getFD(); }
         SocketType getType() const { return m_type; }
     private:
@@ -119,7 +119,9 @@ namespace hammer {
         using ConnCB = std::function<void(int)>;
 
         Socket(const EventPoller::ptr poller = nullptr, bool enable_mutex = true);
+        void shutdownSocket();
         void closeSocket();
+        bool isClosed() const { return m_is_closed; }
         ~Socket();
         static Socket::ptr createSocket(const EventPoller::ptr &poller, bool enable_mutex = true);
         static Socket* createSocketPtr(const EventPoller::ptr &poller, bool enable_mutex = true);
@@ -196,12 +198,13 @@ namespace hammer {
         bool                m_write_enable = false;
         bool                m_read_triggered = false;
         bool                m_write_triggered = true;
+        bool                m_is_closed = false;
 
         MBuffer::ptr        m_write_buffer_waiting = nullptr;
         MutexWrapper<std::recursive_mutex>  m_write_buffer_waiting_mutex;
         MBuffer::ptr        m_write_buffer_sending = nullptr;
         MutexWrapper<std::recursive_mutex>  m_write_buffer_sending_mutex;
-    };  
+    };
 }
 
 #endif //HAMMER_SOCKET_HH

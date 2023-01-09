@@ -39,8 +39,8 @@ namespace hammer {
     }
 
     SocketNO::~SocketNO() {
-        ::shutdown(m_fd, SHUT_RDWR);
-        //HAMMER_LOG_DEBUG(g_logger) << "close SocketNO fd: " << m_fd;
+        //::shutdown(m_fd, SHUT_RDWR);
+        HAMMER_LOG_ERROR(g_logger) << "close SocketNO fd: " << m_fd;
         close(m_fd);
     }
 
@@ -57,10 +57,16 @@ namespace hammer {
         setOnBeforeAcceptCB(nullptr);
         setOnAcceptCB(nullptr);
         setOnReadCB(nullptr);
-        #if HIGH_PERF == 0
         setOnWrittenCB(nullptr);
-        #endif
         setOnErrCB(nullptr);
+    }
+
+    void Socket::shutdownSocket() {
+        // enable r/w TODO
+        if (m_fd) {
+            m_fd->shutdown();
+            //m_is_closed = true;
+        }
     }
 
     void Socket::closeSocket() {
@@ -76,15 +82,7 @@ namespace hammer {
 
     Socket::~Socket() {
         if (!m_poller->isCurrentThread()) {
-            if (m_fd) {
-                HAMMER_LOG_WARN(g_logger) << "~Socket fd: " << m_fd->getFD() << " in other thread";
-            } else {
-                HAMMER_LOG_WARN(g_logger) << "~Socket in other thread";
-            }
-            sleep(5);
             HAMMER_ASSERT(0);
-        } else {
-            HAMMER_LOG_DEBUG(g_logger) << "~Socket in local thread";
         }
         closeSocket();
     }
@@ -285,6 +283,7 @@ namespace hammer {
 
             LOCK_GUARD(m_event_cb_mutex);
             try {
+                HAMMER_LOG_WARN(g_logger) << "onRead after recvfrom call upper";
                 m_on_read_cb(m_read_buffer, (struct sockaddr*)&addr, len);
                 // assert upper consume over TODO
             } catch (std::exception &e) {
@@ -395,15 +394,28 @@ namespace hammer {
                 HAMMER_ASSERT(0);
                 return;
             }
+            HAMMER_LOG_WARN(g_logger) << "attachEvent event: " << event;
             if (event & EventPoller::Event::READ) {
+                if (strong_self->isClosed()) {
+                    return;
+                }
+                HAMMER_LOG_WARN(g_logger) << "attachEvent r";
                 strong_self->setReadTriggered(true);
                 strong_self->onRead(strong_sock, is_udp);
             }
             if (event & EventPoller::Event::WRITE) {
+                if (strong_self->isClosed()) {
+                    return;
+                }
+                HAMMER_LOG_WARN(g_logger) << "attachEvent w";
                 strong_self->setWriteTriggered(true);
                 strong_self->onWrite(strong_sock);
             }
             if (event & EventPoller::Event::ERROR) {
+                if (strong_self->isClosed()) {
+                    return;
+                }
+                HAMMER_LOG_WARN(g_logger) << "attachEvent e";
                 strong_self->setReadTriggered(true);
                 strong_self->setWriteTriggered(true);
                 strong_self->emitErr(getSocketError(strong_sock));

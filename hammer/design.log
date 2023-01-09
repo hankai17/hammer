@@ -165,3 +165,31 @@ Percentage of the requests served within a certain time (ms)
 
 双线程跑不过nginx nginx是18000 hammer是15000(accept绑定线程即return nullptr) 16000(随机调度)
 
+
+----------------------------------------
+正常的读写关闭回调
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/socket.cc:398       attachEvent: 3
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/socket.cc:400       attachEvent r: 3
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:149   before server read0
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:162   after server write
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:194   after server err
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:151   after server read0
+2023-01-08 22:21:56     187943  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/socket.cc:405       attachEvent w: 3
+
+
+异常的'不注册写回调': 在发完数据后 回调上层时发生异常
+2023-01-08 22:24:25     188129  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/socket.cc:398       attachEvent: 3
+2023-01-08 22:24:25     188129  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/socket.cc:400       attachEvent r: 3
+2023-01-08 22:24:25     188129  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:149   before server read0
+2023-01-08 22:24:25     188129  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:156   after server read2
+2023-01-08 22:24:25     188129  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/tcp_server.cc:194   after server err
+2023-01-08 22:24:25     188129  0       [WARN]  [system]        /root/CLionProjects/local_git/hammer/hammer/socket.cc:405       attachEvent w: 3
+
+对比来看正常的就是多了一个上层写回调 性能从29000降到240000 cpu从88到64 找不到原因
+
+---------------------------------------
+服务端如何优雅的关闭: 即如何确保响应完全发给了客户端? 
+当然当前这种 全塞到了缓冲区的方式 也无可厚非 但是仍会收到solinger影响
+应该设计出一种机制 不受solinger影响 
+
+

@@ -52,6 +52,7 @@ namespace hammer {
     }
 
     void Session::safeShutdown() {
+        m_socket->shutdownSocket();
         /*
         std::weak_ptr<Session> weak_self = shared_from_this();
         async_first([weak_self]() {
@@ -140,12 +141,15 @@ namespace hammer {
         HAMMER_ASSERT(m_poller->isCurrentThread());
 
         std::weak_ptr<Session> weak_session = session;
-        sock->setOnReadCB([weak_session](const MBuffer::ptr &buf, struct sockaddr *, int) {
+        HAMMER_LOG_ERROR(g_logger) << "onAcceptConnection...";
+        sock->setOnReadCB([weak_session](const MBuffer::ptr &buf, struct sockaddr *, int) -> void{
+            HAMMER_LOG_WARN(g_logger) << "pUpper server r";
             auto strong_session = weak_session.lock();
             if (!strong_session) {
                 return;
             }
             try {
+                HAMMER_LOG_WARN(g_logger) << "Upper server r";
                 strong_session->onRecv(buf);
             } catch (SocketException &e) {
                 strong_session->shutdown(e);
@@ -153,8 +157,13 @@ namespace hammer {
                 strong_session->shutdown(SocketException(ERRCode::SHUTDOWN, e.what()));
             }
         });
-        #if HIGH_PERF == 0
+        sock->setOnWrittenCB([]() {
+            HAMMER_LOG_WARN(g_logger) << "Upper server w";
+            return true;
+        });
+        /*
         sock->setOnWrittenCB([weak_session]() {
+            HAMMER_LOG_WARN(g_logger) << "Upper server w";
             return true;
             auto strong_session = weak_session.lock();
             if (!strong_session) {
@@ -171,7 +180,7 @@ namespace hammer {
             }
             return true;
         });
-        #endif
+        */
         auto session_ptr = session.get();
         sock->setOnErrCB([weak_self, weak_session, session_ptr](const SocketException &e) {
             OnceToken token(nullptr, [&]() {
@@ -182,10 +191,13 @@ namespace hammer {
                 HAMMER_ASSERT(strong_self->m_poller->isCurrentThread());
                 strong_self->m_sessions.erase(session_ptr);
             });
+            /*
             auto strong_session = weak_session.lock();
             if (strong_session) {
                 strong_session->onError(e);
             }
+            */
+            HAMMER_LOG_WARN(g_logger) << "Upper server e";
         });
         return;
     }

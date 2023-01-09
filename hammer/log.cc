@@ -112,7 +112,9 @@ namespace hammer {
             localtime_r(&time, &tm);
             char buf[64];
             strftime(buf, sizeof(buf), m_format.c_str(), &tm);
-            os << buf;
+            //os << buf;
+            //os << std::to_string(getCurrentMillSecond(true));
+            os << std::to_string(getCurrentMicroSecond(true));
         }
     private:
         std::string m_format;
@@ -131,14 +133,6 @@ namespace hammer {
         ThreadIdFormatItem(const std::string& str = "") {}
         void format(std::ostream &os, Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event) {
             os << event->getThreadId();
-        }
-    };
-
-    class FiberIdFormatItem : public LogFormatter::FormatItem {
-    public:
-        FiberIdFormatItem(const std::string& str = "") {}
-        void format(std::ostream &os, Logger::ptr logger, LogLevel::Level level, LogEvent::ptr event) {
-            os << event->getFiberId();
         }
     };
 
@@ -256,7 +250,7 @@ namespace hammer {
     Logger::Logger(const std::string& name)
             : m_name(name),
               m_level(LogLevel::WARN) {
-        m_formatter.reset(new LogFormatter("%d{%Y-%m-%d %H:%M:%S}%T%t%T%F%T[%p]%T[%c]%T%f:%l%T%m%n"));
+        m_formatter.reset(new LogFormatter("%d{%Y-%m-%d %H:%M:%S}%T%t%T[%p]%T[%c]%T%f:%l%T%m%n"));
     }
 
     void Logger::log(LogLevel::Level level, LogEvent::ptr event) {
@@ -283,8 +277,7 @@ namespace hammer {
         char* format_e = nullptr;
         parse_stat curr_state = INIT;
 
-        for (size_t i = 0; i < m_pattern.size(); i++) { //%d{%Y-%m-%d %H:%M:%S}%T%t%T%F%T[%p]%T[%c]%T%f:%l%T%m%n
-            //std::cout<<curr_state<<" "<< m_pattern[i]<<std::endl;
+        for (size_t i = 0; i < m_pattern.size(); i++) {
             switch(curr_state) {
                 case INIT:
                     if (m_pattern[i] == '%') {
@@ -294,7 +287,7 @@ namespace hammer {
                     }
                     break;
                 case ITEM:
-                    if (m_pattern[i] /*&& not space*/) { //TODO check vail
+                    if (m_pattern[i] /*&& not space*/) {
                         if (item == "") {
                             item = m_pattern[i];
                             if ( i + 1 < m_pattern.size() && m_pattern[i + 1] != '{') {
@@ -330,7 +323,6 @@ namespace hammer {
                     }
                     break;
                 case NORM:
-                    // special char
                     vec.push_back(std::make_tuple(std::string(&m_pattern[i], 1), format, 0));
                     item = "";
                     format = "";
@@ -341,7 +333,6 @@ namespace hammer {
             }
         }
 
-        // register factory map
         static std::map<std::string, std::function<FormatItem::ptr(const std::string& str)> > s_format_items = {
 #define XX(str, C) \
         {#str, [](const std::string& fmt) { return FormatItem::ptr (new C(fmt)); }}
@@ -355,7 +346,6 @@ namespace hammer {
                 XX(f, FilenameFormatItem),
                 XX(l, LineFormatItem),
                 XX(T, TabFormatItem),
-                XX(F, FiberIdFormatItem),
 #undef XX
         };
 

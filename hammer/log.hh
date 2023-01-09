@@ -68,7 +68,6 @@ namespace hammer {
         const char* getFile() const { return m_file; }
         uint32_t getLine() const { return m_line; }
         uint32_t getThreadId() const { return m_threadId; }
-        uint32_t getFiberId() const { return m_fiberId; }
         std::stringstream& getSS() { return m_ss; } // Why not const? Why return &?
         std::string getContent() const { return m_ss.str(); }
 
@@ -80,7 +79,6 @@ namespace hammer {
         const char* m_file      = nullptr; // Why not string // Below vaule all from para
         uint32_t m_line         = 0;
         uint32_t m_threadId     = 0;
-        uint32_t m_fiberId      = 0;
         std::stringstream       m_ss; // Why need this? We already had formatter
     };
 

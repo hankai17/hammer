@@ -117,6 +117,7 @@ public:
         //buf->clear();
         auto resp = std::make_shared<hammer::MBuffer>("HTTP/1.1 200 OK\r\n\r\n");
         send(resp);
+        //safeShutdown(); 
         shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
     }
     virtual void onWritten() {
