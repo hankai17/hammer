@@ -141,15 +141,12 @@ namespace hammer {
         HAMMER_ASSERT(m_poller->isCurrentThread());
 
         std::weak_ptr<Session> weak_session = session;
-        HAMMER_LOG_ERROR(g_logger) << "onAcceptConnection...";
         sock->setOnReadCB([weak_session](const MBuffer::ptr &buf, struct sockaddr *, int) -> void{
-            HAMMER_LOG_WARN(g_logger) << "pUpper server r";
             auto strong_session = weak_session.lock();
             if (!strong_session) {
                 return;
             }
             try {
-                HAMMER_LOG_WARN(g_logger) << "Upper server r";
                 strong_session->onRecv(buf);
             } catch (SocketException &e) {
                 strong_session->shutdown(e);
@@ -157,14 +154,7 @@ namespace hammer {
                 strong_session->shutdown(SocketException(ERRCode::SHUTDOWN, e.what()));
             }
         });
-        sock->setOnWrittenCB([]() {
-            HAMMER_LOG_WARN(g_logger) << "Upper server w";
-            return true;
-        });
-        /*
         sock->setOnWrittenCB([weak_session]() {
-            HAMMER_LOG_WARN(g_logger) << "Upper server w";
-            return true;
             auto strong_session = weak_session.lock();
             if (!strong_session) {
                 return false;
@@ -180,7 +170,6 @@ namespace hammer {
             }
             return true;
         });
-        */
         auto session_ptr = session.get();
         sock->setOnErrCB([weak_self, weak_session, session_ptr](const SocketException &e) {
             OnceToken token(nullptr, [&]() {
@@ -197,7 +186,6 @@ namespace hammer {
                 strong_session->onError(e);
             }
             */
-            HAMMER_LOG_WARN(g_logger) << "Upper server e";
         });
         return;
     }

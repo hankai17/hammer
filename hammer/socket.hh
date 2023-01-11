@@ -121,7 +121,7 @@ namespace hammer {
         Socket(const EventPoller::ptr poller = nullptr, bool enable_mutex = true);
         void shutdownSocket();
         void closeSocket();
-        bool isClosed() const { return m_is_closed; }
+        bool isClosed();
         ~Socket();
         static Socket::ptr createSocket(const EventPoller::ptr &poller, bool enable_mutex = true);
         static Socket* createSocketPtr(const EventPoller::ptr &poller, bool enable_mutex = true);

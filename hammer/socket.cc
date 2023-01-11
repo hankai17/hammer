@@ -40,7 +40,6 @@ namespace hammer {
 
     SocketNO::~SocketNO() {
         //::shutdown(m_fd, SHUT_RDWR);
-        HAMMER_LOG_ERROR(g_logger) << "close SocketNO fd: " << m_fd;
         close(m_fd);
     }
 
@@ -69,14 +68,18 @@ namespace hammer {
         }
     }
 
+    bool Socket::isClosed() {
+        if (m_fd == nullptr) {
+            return true;
+        }
+        return false;
+    }
+
     void Socket::closeSocket() {
         m_conn_timer = nullptr;
         m_conn_cb = nullptr;
 
         LOCK_GUARD(m_socketFD_mutex);
-        if (m_fd) {
-            HAMMER_LOG_DEBUG(g_logger) << "closeSocket fd: " << m_fd->getFD();
-        }
         m_fd = nullptr;
     }
 
@@ -283,7 +286,6 @@ namespace hammer {
 
             LOCK_GUARD(m_event_cb_mutex);
             try {
-                HAMMER_LOG_WARN(g_logger) << "onRead after recvfrom call upper";
                 m_on_read_cb(m_read_buffer, (struct sockaddr*)&addr, len);
                 // assert upper consume over TODO
             } catch (std::exception &e) {
@@ -359,7 +361,8 @@ namespace hammer {
             m_write_buffer_sending->copyIn(*tmp_buffer.get(), tmp_buffer->readAvailable());
             return true;
         }
-        return writeData(sock);
+        onWritten(sock);
+        return true;
     }
 
     void Socket::onWrite(const SocketFD::ptr &sock) {
@@ -394,12 +397,10 @@ namespace hammer {
                 HAMMER_ASSERT(0);
                 return;
             }
-            HAMMER_LOG_WARN(g_logger) << "attachEvent event: " << event;
             if (event & EventPoller::Event::READ) {
                 if (strong_self->isClosed()) {
                     return;
                 }
-                HAMMER_LOG_WARN(g_logger) << "attachEvent r";
                 strong_self->setReadTriggered(true);
                 strong_self->onRead(strong_sock, is_udp);
             }
@@ -407,7 +408,6 @@ namespace hammer {
                 if (strong_self->isClosed()) {
                     return;
                 }
-                HAMMER_LOG_WARN(g_logger) << "attachEvent w";
                 strong_self->setWriteTriggered(true);
                 strong_self->onWrite(strong_sock);
             }
@@ -415,7 +415,6 @@ namespace hammer {
                 if (strong_self->isClosed()) {
                     return;
                 }
-                HAMMER_LOG_WARN(g_logger) << "attachEvent e";
                 strong_self->setReadTriggered(true);
                 strong_self->setWriteTriggered(true);
                 strong_self->emitErr(getSocketError(strong_sock));
@@ -472,13 +471,13 @@ namespace hammer {
                     HAMMER_LOG_WARN(g_logger) << "Accept socket failed: " << e.what();
                     return -1;
                 }
-                SocketOps::setNoSigpipe(fd);
+                //SocketOps::setNoSigpipe(fd);
                 SocketOps::setNoBlocked(fd);
-                SocketOps::setNoDelay(fd);
-                SocketOps::setSendBuf(fd);
-                SocketOps::setRecvBuf(fd);
-                SocketOps::setCloseWait(fd);
-                SocketOps::setCloExec(fd);
+                //SocketOps::setNoDelay(fd);
+                //SocketOps::setSendBuf(fd);
+                //SocketOps::setRecvBuf(fd);
+                //SocketOps::setCloseWait(fd);
+                //SocketOps::setCloExec(fd);
 
                 Socket* new_sock = nullptr;
                 try {
@@ -493,6 +492,7 @@ namespace hammer {
                     new_sock = Socket::createSocketPtr(m_poller, false);
                 }
                 new_sock->setSocketFD(fd);
+                new_sock->setReadTriggered(true);
                 try {
                     LOCK_GUARD(m_event_cb_mutex);
                     m_on_accept_cb(new_sock);
@@ -616,7 +616,7 @@ namespace hammer {
         // 同步写
         {
             if (isWriteTriggered()) {
-                return writeData(m_fd) ? size : 0; 
+                writeData(m_fd);
             }
             // 超时处理
         }

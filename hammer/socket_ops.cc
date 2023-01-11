@@ -392,6 +392,8 @@ namespace hammer {
         setReuseable(fd, true, false);
         setNoBlocked(fd);
         setCloExec(fd);
+        int value = 0;
+        setsockopt(fd, IPPROTO_TCP, TCP_DEFER_ACCEPT, &value, sizeof(int));
     
         if (bind_sock(fd, local_ip, port, family) == -1) {
             close(fd);

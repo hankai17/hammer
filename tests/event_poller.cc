@@ -118,10 +118,11 @@ public:
         auto resp = std::make_shared<hammer::MBuffer>("HTTP/1.1 200 OK\r\n\r\n");
         send(resp);
         //safeShutdown(); 
-        shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
+        //shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
     }
     virtual void onWritten() {
-        //shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
+        //safeShutdown();
+        shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
     }
     virtual void onError(const hammer::SocketException &e) {
         //HAMMER_LOG_WARN(g_logger) << "onError cb";
