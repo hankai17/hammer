@@ -30,6 +30,7 @@ namespace hammer {
         return;
     }
 
+    /// Session
     Session::Session(const std::weak_ptr<TcpServer> &server, const Socket::ptr &sock) 
         : m_socket(sock), m_server(server) {
         m_id = getID();
@@ -64,6 +65,7 @@ namespace hammer {
         */
     }
 
+    /// SessionManager
     Session::ptr SessionManager::get(const std::string &key) {
         std::lock_guard<std::mutex> lock(m_mutex);
         auto it = m_sessions.find(key);
@@ -96,6 +98,7 @@ namespace hammer {
         return m_sessions.erase(key);
     }
 
+    /// TcpServer
     TcpServer::TcpServer(const EventPoller::ptr &poller) :
             m_poller(poller) {
         m_on_create_socket = [](const EventPoller::ptr &poller) {
@@ -269,6 +272,99 @@ namespace hammer {
             m_cloned_server[poller.get()] = server;
             server->cloneFrom(*this);
         });
+    }
+
+    /// TcpClient
+    TcpClient::TcpClient(const EventPoller::ptr &poller) {
+        m_poller = (poller == nullptr) ? 
+                Singleton<EventPollerPool>::instance().getPoller() : poller;
+    }
+
+    TcpClient::~TcpClient() {}
+
+    void TcpClient::startConnect(const std::string &url, uint16_t port, float timeout, uint16_t local_port) {
+        std::weak_ptr<TcpClient> weak_self = shared_from_this();
+        m_timer = std::make_shared<Timer>(1000 * 2.0f, [weak_self]() {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return false;
+            }
+            strong_self->onManager();
+            return true;
+        }, m_poller);
+        m_socket = Socket::createSocket(m_poller, false);
+        auto sock_ptr = m_socket.get();
+        m_socket->setOnErrCB([weak_self, sock_ptr](const SocketException &e) {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return;
+            }
+            if (sock_ptr != strong_self->m_socket.get()) {
+                return;
+            }
+            strong_self->m_timer.reset();
+            strong_self->onError(e);
+        });
+        sock_ptr->connect(url, port, [weak_self](const SocketException &e) {
+            auto strong_self = weak_self.lock();
+            if (strong_self) {
+                strong_self->onSocketConnect(e);
+            }
+        }, timeout, "::", local_port);
+    }
+
+    ssize_t TcpClient::send(MBuffer::ptr buf) {
+        return m_socket->send(std::move(buf));
+    }
+
+    void TcpClient::shutdown(const SocketException &e) {
+        m_timer.reset();
+        m_socket->emitErr(e);
+    }
+
+    bool TcpClient::alive() const {
+        if (m_timer) {
+            return true;
+        }
+        // TODO
+        return true;
+    }
+
+    void TcpClient::onSocketConnect(const SocketException &e) {
+        if (e) {
+            m_timer.reset();
+            onConnect(e);
+            return;
+        }
+        std::weak_ptr<TcpClient> weak_self = shared_from_this();
+        auto sock_ptr = m_socket.get();
+        sock_ptr->setOnReadCB([weak_self, sock_ptr](const MBuffer::ptr &buf, struct sockaddr *addr, int addr_len) {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return;
+            }
+            if (sock_ptr != strong_self->m_socket.get()) {
+                return;
+            }
+            try {
+                strong_self->onRecv(buf);
+            } catch (std::exception &e) {
+                HAMMER_LOG_WARN(g_logger) << "Exception occurred : " << e.what();
+                sock_ptr->emitErr(SocketException(ERRCode::OTHER, e.what()));
+            }
+        });
+        sock_ptr->setOnWrittenCB([weak_self, sock_ptr]() {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return false;
+            }
+            if (sock_ptr != strong_self->m_socket.get()) {
+                return false;
+            }
+            strong_self->onWritten();     
+            return true;
+        });
+        onConnect(e);
     }
 
 }

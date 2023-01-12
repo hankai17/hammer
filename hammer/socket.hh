@@ -156,7 +156,9 @@ namespace hammer {
         int onAccept(const SocketFD::ptr &sock, int event);
 
         void onConnected(const SocketFD::ptr &sock, const onErrCB &cb);
-        void connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
+        void connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout = 5 * 1000,
+                const std::string &local_ip = "::", uint16_t local_port = 0);
+        void connect_l(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
                 const std::string &local_ip, uint16_t local_port);
         int flushAll();
         ssize_t send_l(MBuffer::ptr buf);

@@ -283,7 +283,6 @@ namespace hammer {
 
             ret += nread;
             m_read_buffer->product(nread);
-
             LOCK_GUARD(m_event_cb_mutex);
             try {
                 m_on_read_cb(m_read_buffer, (struct sockaddr*)&addr, len);
@@ -389,6 +388,7 @@ namespace hammer {
         m_read_enable = true;
         m_read_buffer = m_poller->getSharedBuffer();
         auto is_udp = sock->getType() == SocketFD::SocketType::UDP;
+        
         int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR,
                 [weak_self, weak_sock, is_udp](int event) {
             auto strong_self = weak_self.lock();
@@ -516,7 +516,7 @@ namespace hammer {
             cb(err);
             return;
         }
-        getPoller()->delEvent(sock->getFD()); // ?
+        getPoller()->delEvent(sock->getFD());
         if (!attachEvent(sock)) {
             cb(SocketException(ERRCode::OTHER, "add event to poller failed when connected"));
             return;
@@ -525,6 +525,18 @@ namespace hammer {
     }
 
     void Socket::connect(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
+                 const std::string &local_ip, uint16_t local_port) {
+        std::weak_ptr<Socket> weak_self = shared_from_this();
+        m_poller->async([=]() {
+            auto strong_self = weak_self.lock();
+            if (!strong_self) {
+                return;
+            }
+            strong_self->connect_l(url, port, err_cb, timeout, local_ip, local_port);
+        });
+    }
+
+    void Socket::connect_l(const std::string &url, uint16_t port, const onErrCB &err_cb, float timeout,
                  const std::string &local_ip, uint16_t local_port) {
         closeSocket();
         std::weak_ptr<Socket> weak_self = shared_from_this();
@@ -542,7 +554,7 @@ namespace hammer {
             err_cb(err);
         };
 
-        auto async_conn_cb = std::make_shared<std::function<void(int)>>([weak_self, err_cb](int sock) {
+        auto async_conn_cb = std::make_shared<std::function<void(int)>>([weak_self, conn_cb](int sock) {
             auto strong_self = weak_self.lock();
             if (sock == -1 || !strong_self) {
                 if (!strong_self) {
@@ -550,7 +562,7 @@ namespace hammer {
                         close(sock);
                     }
                 } else {
-                    err_cb(SocketException(ERRCode::DNS, get_uv_errmsg(true)));
+                    conn_cb(SocketException(ERRCode::DNS, get_uv_errmsg(true)));
                 }
                 return;
             }
@@ -558,15 +570,15 @@ namespace hammer {
                     strong_self->getPoller());
             std::weak_ptr<SocketFD> weak_sock = strong_sock;
             int ret = strong_self->getPoller()->addEvent(sock, EventPoller::Event::WRITE,
-                    [weak_self, weak_sock, err_cb](int event) {
+                    [weak_self, weak_sock, conn_cb](int event) {
                 auto strong_self = weak_self.lock();
                 auto strong_sock = weak_sock.lock();
                 if (strong_self && strong_sock) {
-                    strong_self->onConnected(strong_sock, err_cb);
+                    strong_self->onConnected(strong_sock, conn_cb);
                 }
             });
             if (ret == -1) {
-                err_cb(SocketException(ERRCode::OTHER, "add event to poller failed when start connect"));
+                conn_cb(SocketException(ERRCode::OTHER, "add event to poller failed when start connect"));
                 return;
             }
             LOCK_GUARD(strong_self->getFdMutex());
@@ -593,8 +605,8 @@ namespace hammer {
             m_conn_cb = async_conn_cb;
         }
 
-        m_conn_timer = std::make_shared<Timer>(timeout, [weak_self, err_cb]()->bool {
-            err_cb(SocketException(ERRCode::TIMEOUT, uv_strerror(UV_ETIMEDOUT)));
+        m_conn_timer = std::make_shared<Timer>(timeout, [weak_self, conn_cb]()->bool {
+            conn_cb(SocketException(ERRCode::TIMEOUT, uv_strerror(UV_ETIMEDOUT)));
             return false;
         }, m_poller);
     }

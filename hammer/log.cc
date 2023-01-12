@@ -249,7 +249,7 @@ namespace hammer {
 
     Logger::Logger(const std::string& name)
             : m_name(name),
-              m_level(LogLevel::FATAL) {
+              m_level(LogLevel::DEBUG) {
         m_formatter.reset(new LogFormatter("%d{%Y-%m-%d %H:%M:%S}%T%t%T[%p]%T[%c]%T%f:%l%T%m%n"));
     }
 

@@ -100,6 +100,29 @@ namespace hammer {
         std::unordered_map<const EventPoller *, ptr> m_cloned_server;
     };
 
+    class TcpClient : public std::enable_shared_from_this<TcpClient> {
+    public:
+        using ptr = std::shared_ptr<TcpClient>;
+        TcpClient(const EventPoller::ptr &poller = nullptr);
+        ~TcpClient();
+        void startConnect(const std::string &url, uint16_t port, float timeout = 1000 * 5, uint16_t local_port = 0);
+        void shutdown(const SocketException &e = SocketException(ERRCode::SHUTDOWN, "self shutdown"));
+        bool alive() const;
+        ssize_t send(MBuffer::ptr buf);
+    protected:
+        virtual void onConnect(const SocketException &e) {};
+        virtual void onRecv(const MBuffer::ptr &buf) {};
+        virtual void onWritten() {};
+        virtual void onError(const SocketException &e) {};
+        virtual void onManager() {};
+    private:
+        void onSocketConnect(const SocketException &e);
+
+        EventPoller::ptr    m_poller = nullptr;
+        Socket::ptr         m_socket = nullptr;
+        Timer::ptr          m_timer = nullptr;
+    };
+
 }
 
 
