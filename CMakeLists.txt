@@ -7,21 +7,17 @@ set(CMAKE_CXX_FLAGS "$ENV{CXXFLAGS} -rdynamic -O0 -ggdb -g -std=c++17 -Wall -Wno
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 17)
 
+set(ENABLE_OPENSSL true)
+
 include_directories("./" "./tests")
 
 find_library(THREAD pthread /usr/lib64/)
 #find_library(GTEST gtest /usr/local/lib64/)
 
-find_package(OpenSSL REQUIRED)
-if(OPENSSL_FOUND)
-    include_directories(${OPENSSL_INCLUDE_DIR})
-endif()
-
 set(LIBS ${PROJECT_NAME}
         pthread
         dl
         jemalloc
-        ${OPENSSL_LIBRARIES}
         )
 
 set(LIB_SRC
@@ -35,6 +31,14 @@ set(LIB_SRC
         hammer/socket_ops.cc
         hammer/socket.cc
         hammer/tcp_server.cc)
+
+find_package(OpenSSL QUIET)
+if(OPENSSL_FOUND AND ENABLE_OPENSSL)
+    message(STATUS "找到openssl库:\"${OPENSSL_INCLUDE_DIR}\",ENABLE_OPENSSL宏已打开")
+    include_directories(${OPENSSL_INCLUDE_DIR})
+    add_definitions(-DENABLE_OPENSSL)
+    list(APPEND LIBS ${OPENSSL_LIBRARIES})
+endif()
 
 add_library(${PROJECT_NAME} SHARED ${LIB_SRC})
 

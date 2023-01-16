@@ -103,6 +103,7 @@ namespace hammer {
         ptrdiff_t find(const std::string& buffer, size_t length = ~0) const;
 
         std::string toString() const;
+        char *data() const;
         uint8_t *toChar() const;
         std::string toHexString() const;
         std::string getDelimited(char delimiter, bool eofIsDelimiter = true,

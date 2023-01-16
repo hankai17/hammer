@@ -683,6 +683,10 @@ namespace hammer {
         return result;
     }
 
+    char* MBuffer::data() const {
+        return (char*)toChar();
+    }
+
     uint8_t* MBuffer::toChar() const { // Only first block
         if (m_readAvailable == 0) {
             return nullptr;
