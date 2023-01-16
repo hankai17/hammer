@@ -1,0 +1,92 @@
+diff --git a/hammer/event_poller.cc b/hammer/event_poller.cc
+index b8d1526..9b55490 100644
+--- a/hammer/event_poller.cc
++++ b/hammer/event_poller.cc
+@@ -217,6 +217,12 @@ namespace hammer {
+                     HAMMER_LOG_WARN(g_logger) << "Exception occurred when do epoll_wait cb: " << e.what();
+                 }
+             }
++            for (e : m_read_ready_list) {
++                (*cb)(readEvent) 
++            }
++            for (e : m_write_ready_list) {
++                (*cb)(writeEvent) 
++            }
+         }
+     }
+     
+diff --git a/hammer/event_poller.hh b/hammer/event_poller.hh
+index a4199a3..2edd6ec 100644
+--- a/hammer/event_poller.hh
++++ b/hammer/event_poller.hh
+@@ -143,6 +143,8 @@ namespace hammer {
+         void runLoop(bool blocked);
+         void shutdown();
+ 
++        void reenable(<fd, cb>);
++
+     private:
+         class ExitException : public std::exception {};
+     private:
+@@ -157,6 +159,10 @@ namespace hammer {
+         semaphore           m_sem_loop_thread_started;
+         std::weak_ptr<MBuffer>                  m_shared_buffer;
+         std::multimap<uint64_t, TimerTask::ptr> m_timer_map;
++        std::vector<shared<fd, void(event)>>                m_read_ready_list;
++        // eg: epoll_wait return ok
++        // eg: reenable <fd, bigFun>
++        std::vector<fd, cb>                m_write_ready_list;
+         std::unordered_map<int, std::shared_ptr<PollEventCB>> m_event_map;
+     };
+ 
+diff --git a/hammer/socket.cc b/hammer/socket.cc
+index 4afbf04..a537927 100644
+--- a/hammer/socket.cc
++++ b/hammer/socket.cc
+@@ -388,13 +388,13 @@ namespace hammer {
+         m_read_enable = true;
+         m_read_buffer = m_poller->getSharedBuffer();
+         auto is_udp = sock->getType() == SocketFD::SocketType::UDP;
+-        
+-        int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR,
+-                [weak_self, weak_sock, is_udp](int event) {
++
++        reenable(<fd, onWrite>)
++
++        auto func = [weak_self, weak_sock, is_udp](int event) {
+             auto strong_self = weak_self.lock();
+             auto strong_sock = weak_sock.lock();
+             if (!strong_self || !strong_sock) {
+-                HAMMER_ASSERT(0);
+                 return;
+             }
+             if (event & EventPoller::Event::READ) {
+@@ -419,7 +419,9 @@ namespace hammer {
+                 strong_self->setWriteTriggered(true);
+                 strong_self->emitErr(getSocketError(strong_sock));
+             }
+-        });
++        }
++        
++        int ret = m_poller->addEvent(sock->getFD(), EventPoller::Event::READ | EventPoller::Event::WRITE | EventPoller::Event::ERROR, func);
+         return -1 != ret;
+     }
+ 
+@@ -625,12 +627,14 @@ namespace hammer {
+             m_write_buffer_waiting->copyIn(*buf.get());
+             buf->clear();
+         }
+-        // 同步写
+-        {
++        if (sync_write) {
+             if (isWriteTriggered()) {
+                 writeData(m_fd);
+             }
+-            // 超时处理
++        } else {
++            if (isWriteTriggered()) {
++                reenable(<fd, onWrite>)
++            }
+         }
+         return size;
+     }
