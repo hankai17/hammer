@@ -77,7 +77,7 @@ class SimpleClient : public hammer::TcpClient {
 public:
     using ptr = std::shared_ptr<SimpleClient>;
     SimpleClient() {}
-    ~SimpleClient() {}
+    virtual ~SimpleClient() {}
     
 protected:
     virtual void onConnect(const hammer::SocketException &e) override {
@@ -85,18 +85,18 @@ protected:
         auto req = std::make_shared<hammer::MBuffer>(req_header);
         send(req);
     };
-    virtual void onRecv(const hammer::MBuffer::ptr &buf) {
+    virtual void onRecv(const hammer::MBuffer::ptr &buf) override {
         HAMMER_LOG_DEBUG(g_logger) << "onRecv: " << buf->toString();
         buf->clear();
         shutdown(hammer::SocketException(hammer::ERRCode::SHUTDOWN, "shutdown"));
     }
-    virtual void onWritten() {
+    virtual void onWritten() override {
         HAMMER_LOG_DEBUG(g_logger) << "onWritten ";
     }
-    virtual void onError(const hammer::SocketException &e) {
+    virtual void onError(const hammer::SocketException &e) override {
         HAMMER_LOG_DEBUG(g_logger) << "onError: " << e.what();
     }
-    virtual void onManager() {
+    virtual void onManager() override {
         HAMMER_LOG_DEBUG(g_logger) << "onManager";
     }
 private:
@@ -105,6 +105,13 @@ private:
 void test_simple_client()
 {
     auto client = std::make_shared<SimpleClient>();
+    client->startConnect("0.0.0.0", 9527);
+    while(1) { sleep(1); }
+}
+
+void test_simple_ssl_client()
+{
+    auto client = std::make_shared<hammer::TcpClientWithSSL<SimpleClient>>();
     client->startConnect("0.0.0.0", 9527);
     while(1) { sleep(1); }
 }
@@ -118,7 +125,8 @@ int main()
     //poller->doTimerTask(1000 * 1,  client_statics);
 
     //test_tcp_client(poller);
-    test_simple_client();
+    //test_simple_client();
+    test_simple_ssl_client();
     while(1) { sleep(1); }
     return 0;
 }

@@ -34,7 +34,7 @@ set(LIB_SRC
 
 find_package(OpenSSL QUIET)
 if(OPENSSL_FOUND AND ENABLE_OPENSSL)
-    message(STATUS "找到openssl库:\"${OPENSSL_INCLUDE_DIR}\",ENABLE_OPENSSL宏已打开")
+    message(STATUS "found openssl:\"${OPENSSL_INCLUDE_DIR}\",ENABLE_OPENSSL")
     include_directories(${OPENSSL_INCLUDE_DIR})
     add_definitions(-DENABLE_OPENSSL)
     list(APPEND LIBS ${OPENSSL_LIBRARIES})
