@@ -106,10 +106,10 @@ namespace hammer {
         using ptr = std::shared_ptr<TcpClient>;
         TcpClient(const EventPoller::ptr &poller = nullptr);
         ~TcpClient();
-        void startConnect(const std::string &url, uint16_t port, float timeout = 1000 * 5, uint16_t local_port = 0);
-        void shutdown(const SocketException &e = SocketException(ERRCode::SHUTDOWN, "self shutdown"));
+        virtual void startConnect(const std::string &url, uint16_t port, float timeout = 1000 * 5, uint16_t local_port = 0);
+        virtual void shutdown(const SocketException &e = SocketException(ERRCode::SHUTDOWN, "self shutdown"));
         bool alive() const;
-        ssize_t send(MBuffer::ptr buf);
+        virtual ssize_t send(MBuffer::ptr buf);
     protected:
         virtual void onConnect(const SocketException &e) {};
         virtual void onRecv(const MBuffer::ptr &buf) {};
@@ -143,7 +143,7 @@ namespace hammer {
                 TcpClientType::onRecv(buf);
             }
         }
-        ssize_t send(MBuffer::ptr buf) {
+        ssize_t send(MBuffer::ptr buf) override {
             if (m_ssl_box) {
                 auto size = buf->readAvailable();
                 m_ssl_box->onSend(std::move(buf));
@@ -151,7 +151,7 @@ namespace hammer {
             }
             return TcpClientType::send(std::move(buf));
         }
-        void startConnect(const std::string &url, uint16_t port, float timeout = 1000 * 5, uint16_t local_port = 0) {
+        void startConnect(const std::string &url, uint16_t port, float timeout = 1000 * 5, uint16_t local_port = 0) override {
             m_host = url;
             TcpClientType::startConnect(url, port, timeout, local_port);
         }
@@ -161,7 +161,7 @@ namespace hammer {
         inline void public_send(const MBuffer::ptr &buf) {
             TcpClientType::send(std::move(const_cast<MBuffer::ptr&>(buf)));
         }
-        void onConnect(SocketException &e) {
+        void onConnect(const SocketException &e) override {
             if (!e) {
                 m_ssl_box = std::make_shared<SSL_Box>(false);
                 m_ssl_box->setOnDecData([this](const MBuffer::ptr &buf) {

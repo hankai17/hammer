@@ -881,6 +881,8 @@ namespace hammer {
         }
         _send_handshake = false;
         _buff_size = buff_size;
+        _buffer_send = std::make_shared<MBuffer>();
+        _buffer_send->reserve(_buff_size);
 #endif //defined(ENABLE_OPENSSL)
     }
 
@@ -926,7 +928,7 @@ namespace hammer {
 #endif //defined(ENABLE_OPENSSL)
     }
 
-    void SSL_Box::onSend(MBuffer::ptr buffer) { // 传入密文
+    void SSL_Box::onSend(MBuffer::ptr buffer) {
         if (!buffer->readAvailable()) {
             return;
         }
@@ -959,10 +961,10 @@ namespace hammer {
         int total = 0;
         int nread = 0;
         auto buffer = std::make_shared<MBuffer>();
-        buffer->reserve(_buff_size);
-        auto buf_size = buffer->writeAvailable() - 1;
+        auto iov = buffer->writeBuffer(_buff_size, true);
+        auto buf_size = iov.iov_len - 1;
         do {
-            nread = BIO_read(_write_bio, buffer->data() + total, buf_size - total);
+            nread = BIO_read(_write_bio, (char*)iov.iov_base + total, buf_size - total);
             if (nread > 0) {
                 total += nread;
             }
@@ -974,7 +976,8 @@ namespace hammer {
         }
 
         //触发此次回调
-        buffer->data()[total] = '\0';
+        ((char*)iov.iov_base)[total] = '\0';
+        buffer->product(total);
         if (_on_enc) {
             _on_enc(buffer);
         }
@@ -991,10 +994,10 @@ namespace hammer {
         int total = 0;
         int nread = 0;
         auto buffer = std::make_shared<MBuffer>();
-        buffer->reserve(_buff_size);
-        auto buf_size = buffer->writeAvailable() - 1;
+        auto iov = buffer->writeBuffer(_buff_size, true);
+        auto buf_size = iov.iov_len - 1;
         do {
-            nread = SSL_read(_ssl.get(), buffer->data() + total, buf_size - total); // 拿到解密的数据 即拿到明文
+            nread = SSL_read(_ssl.get(), (char*)iov.iov_base + total, buf_size - total); // 拿到解密的数据 即拿到明文
             if (nread > 0) {
                 total += nread;
             }
@@ -1004,7 +1007,8 @@ namespace hammer {
             return;
         }
 
-        buffer->data()[total] = '\0';
+        ((char*)iov.iov_base)[total] = '\0';
+        buffer->product(total);
         if (_on_dec) {
             _on_dec(buffer);
         }
@@ -1027,7 +1031,8 @@ namespace hammer {
         });
 
         flushReadBio();
-        if (!SSL_is_init_finished(_ssl.get()) || _buffer_send->readAvailable() == 0) {
+        if (!SSL_is_init_finished(_ssl.get())
+            || _buffer_send->readAvailable() == 0) {
             //ssl未握手结束或没有需要发送的数据
             flushWriteBio();
             return;
@@ -1037,8 +1042,9 @@ namespace hammer {
         do {
             uint32_t offset = 0;
             uint32_t size = _buffer_send->readAvailable();
+            auto iov = _buffer_send->readBuffer(size, false);
             while (offset < size) {
-                auto nwrite = SSL_write(_ssl.get(), _buffer_send->data() + offset, size - offset);
+                auto nwrite = SSL_write(_ssl.get(), (char*)iov.iov_base + offset, size - offset);
                 if (nwrite > 0) {
                     offset += nwrite;
                     flushWriteBio();
@@ -1069,5 +1075,44 @@ namespace hammer {
         return false;
 #endif//SSL_ENABLE_SNI
     }
+
+    std::string exePath(bool isExe /*= true*/) {
+        char buffer[PATH_MAX * 2 + 1] = {0};
+        int n = -1;
+#if defined(_WIN32)
+        n = GetModuleFileNameA(isExe?nullptr:(HINSTANCE)&__ImageBase, buffer, sizeof(buffer));
+#elif defined(__MACH__) || defined(__APPLE__)
+        n = sizeof(buffer);
+    if (uv_exepath(buffer, &n) != 0) {
+        n = -1;
+    }
+#elif defined(__linux__)
+        n = readlink("/proc/self/exe", buffer, sizeof(buffer));
+#endif
+
+        std::string filePath;
+        if (n <= 0) {
+            filePath = "./";
+        } else {
+            filePath = buffer;
+        }
+
+#if defined(_WIN32)
+        //windows下把路径统一转换层unix风格，因为后续都是按照unix风格处理的
+    for (auto &ch : filePath) {
+        if (ch == '\\') {
+            ch = '/';
+        }
+    }
+#endif //defined(_WIN32)
+
+        return filePath;
+    }
+
+    std::string exeDir(bool isExe /*= true*/) {
+        auto path = exePath(isExe);
+        return path.substr(0, path.rfind('/') + 1);
+    }
+
 
 }

@@ -82,6 +82,7 @@ public:
 protected:
     virtual void onConnect(const hammer::SocketException &e) override {
         HAMMER_LOG_DEBUG(g_logger) << "onConnect: " << e.what();
+        const char *req_header = "GET / HTTP/1.1\r\nUser-Agent: curl/7.20.0 (x86_64-target-linux-gnu) libcurl/7.32.0 GnuTLS/2.12.23 zlib/1.2.8\r\nHost: www.baidu.com\r\nAccept: */*\r\n\r\n";
         auto req = std::make_shared<hammer::MBuffer>(req_header);
         send(req);
     };
@@ -112,8 +113,46 @@ void test_simple_client()
 void test_simple_ssl_client()
 {
     auto client = std::make_shared<hammer::TcpClientWithSSL<SimpleClient>>();
-    client->startConnect("0.0.0.0", 9527);
+    client->startConnect("www.baidu.com", 443);
     while(1) { sleep(1); }
+}
+
+void test_ssl_box()
+{
+    std::string cert = "server.pem";
+    //std::string cert = "ssl.p12";
+    hammer::Singleton<hammer::SSL_Initor>::instance().loadCertificate((hammer::exeDir() + cert).data());
+    hammer::Singleton<hammer::SSL_Initor>::instance().trustCertificate((hammer::exeDir() + cert).data());
+    hammer::Singleton<hammer::SSL_Initor>::instance().ignoreInvalidCertificate(false);
+
+    hammer::SSL_Box server(true);
+    hammer::SSL_Box client(false);
+
+    server.setOnDecData([&](const hammer::MBuffer::ptr &buffer) {
+        HAMMER_LOG_DEBUG(g_logger) << "server recv: " << buffer->toString();
+        server.onSend(buffer);
+    });
+    server.setOnEncData([&](const hammer::MBuffer::ptr &buffer) {
+        client.onRecv(buffer);
+    });
+
+    client.setOnDecData([&](const hammer::MBuffer::ptr &buffer) {
+        HAMMER_LOG_DEBUG(g_logger) << "client recv: " << buffer->toString();
+    });
+    client.setOnEncData([&](const hammer::MBuffer::ptr &buffer) {
+        server.onRecv(buffer);
+    });
+
+    HAMMER_LOG_DEBUG(g_logger) << "please input string to test. 'quit' is stop";
+    std::string input;
+    while (true) {
+        std::cin >> input;
+        if (input == "quit") {
+            break;
+        }
+        client.onSend(std::make_shared<hammer::MBuffer>(input));
+    }
+    return;
 }
 
 int main()
@@ -126,9 +165,10 @@ int main()
 
     //test_tcp_client(poller);
     //test_simple_client();
+    //test_ssl_box();
     test_simple_ssl_client();
     while(1) { sleep(1); }
     return 0;
 }
 
-
+// https://github.com/ZLMediaKit/ZLMediaKit/wiki/%E7%94%9F%E6%88%90SSL%E8%87%AA%E7%AD%BE%E5%90%8D%E8%AF%81%E4%B9%A6%E5%B9%B6%E6%B5%8B%E8%AF%95

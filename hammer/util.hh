@@ -241,6 +241,10 @@ namespace hammer {
         std::function<void(const MBuffer::ptr &)> _on_dec;
         std::function<void(const MBuffer::ptr &)> _on_enc;
     };
+
+    std::string exePath(bool isExe = true);
+    std::string exeDir(bool isExe = true);
+
 }
 
 #endif //HAMMER_UTIL_HH
